@@ -58,7 +58,8 @@ type Process struct {
 	failOnExit bool          // If true, mark failed if the process exits.
 	stopCmd    *exec.Cmd
 	checkCmd   *exec.Cmd
-	startCmd   exec.Cmd
+	startCmd   *exec.Cmd
+	process    *os.Process
 
 	lock   sync.Mutex
 	waiter sync.WaitGroup
@@ -104,10 +105,11 @@ func (p *Process) Depends() []string {
 	return copyArray(p.depends)
 }
 
-func (p *Process) doWait() {
+func (p *Process) doWait(cmd *exec.Cmd) {
 
-	e := p.startCmd.Wait()
+	e := cmd.Wait()
 	p.lock.Lock()
+	p.process = nil
 	if !p.stopped {
 		if e != nil {
 			p.failed = true
@@ -133,16 +135,21 @@ func (p *Process) Start() error {
 	p.failed = false
 	p.reason = nil
 
-	if p.startCmd.Stdout == nil {
-		stdout, e := p.startCmd.StdoutPipe()
+	cmd := &exec.Cmd{}
+	*cmd = *p.startCmd
+
+	// XXX: search path
+
+	if cmd.Stdout == nil {
+		stdout, e := cmd.StdoutPipe()
 		if e != nil {
 			p.logger.Printf("Failed to capture stdout: %v", e)
 		} else {
 			go p.doLog(stdout, "stdout> ")
 		}
 	}
-	if p.startCmd.Stderr == nil {
-		stderr, e := p.startCmd.StderrPipe()
+	if cmd.Stderr == nil {
+		stderr, e := cmd.StderrPipe()
 		if e != nil {
 			p.logger.Printf("Failed to capture stderr: %v", e)
 		} else {
@@ -150,14 +157,15 @@ func (p *Process) Start() error {
 		}
 	}
 
-	if e := p.startCmd.Start(); e != nil {
+	if e := cmd.Start(); e != nil {
 		p.failed = true
 		p.reason = e
 		return e
 	}
+	p.process = cmd.Process
 	p.waiter.Add(1)
 
-	go p.doWait()
+	go p.doWait(cmd)
 
 	return nil
 }
@@ -165,7 +173,7 @@ func (p *Process) Start() error {
 func (p *Process) runCmdWithTimeout(pfx string, c *exec.Cmd, d time.Duration) error {
 	newc := &exec.Cmd{}
 	*newc = *c
-	if proc := p.startCmd.Process; proc != nil {
+	if proc := p.process; proc != nil {
 		if c.Env == nil {
 			newc.Env = os.Environ()
 		}
@@ -173,8 +181,8 @@ func (p *Process) runCmdWithTimeout(pfx string, c *exec.Cmd, d time.Duration) er
 		newc.Env = append(newc.Env, fmt.Sprintf("PID=%d", proc.Pid))
 	}
 
-	newc.Process = nil
-	newc.ProcessState = nil
+	// XXX: search path
+	// XXX: expand $PID in args
 
 	if d == 0 {
 		d = time.Second * 10
@@ -204,8 +212,7 @@ func (p *Process) runCmdWithTimeout(pfx string, c *exec.Cmd, d time.Duration) er
 }
 
 func (p *Process) shutdown() {
-	if proc := p.startCmd.Process; proc != nil && proc.Pid != -1 &&
-		p.startCmd.ProcessState == nil {
+	if proc := p.process; proc != nil && proc.Pid != -1 {
 		if p.stopCmd == nil {
 			e := proc.Signal(syscall.SIGTERM)
 			if e != nil {
@@ -222,7 +229,7 @@ func (p *Process) shutdown() {
 }
 
 func (p *Process) kill() {
-	if proc := p.startCmd.Process; proc != nil {
+	if proc := p.process; proc != nil {
 		e := proc.Kill()
 		if e != nil {
 			p.logger.Printf("Failed killing: %v", e)
@@ -234,7 +241,7 @@ func (p *Process) Stop() {
 
 	p.lock.Lock()
 	p.stopped = true
-	if proc := p.startCmd.Process; proc != nil {
+	if proc := p.process; proc != nil {
 		var timer *time.Timer
 		p.shutdown()
 		if p.stopTime > 0 {
@@ -252,7 +259,7 @@ func (p *Process) Stop() {
 			timer.Stop()
 		}
 	}
-	p.startCmd.Process = nil
+	p.process = nil
 	p.lock.Unlock()
 }
 
@@ -331,8 +338,7 @@ func NewProcessFromManifest(m ProcessManifest) *Service {
 	p.name = m.Name
 	p.desc = m.Description
 	if len(m.Command) != 0 {
-		p.startCmd.Path = m.Command[0]
-		p.startCmd.Args = m.Command
+		p.startCmd = exec.Command(m.Command[0], m.Command[1:]...)
 	}
 	if len(m.StopCmd) != 0 {
 		p.stopCmd = exec.Command(m.StopCmd[0], m.StopCmd[1:]...)
@@ -364,7 +370,8 @@ func NewProcess(name string, cmd *exec.Cmd) *Service {
 	p := &Process{}
 	p.logger = log.New(os.Stderr, "", log.LstdFlags)
 	p.stopTime = time.Second * 10
-	p.startCmd = *cmd
+	p.startCmd = &exec.Cmd{}
+	*p.startCmd = *cmd
 	p.name = name
 	p.desc = name + " process: " + cmd.Path
 	return NewService(p)
