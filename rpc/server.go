@@ -58,19 +58,19 @@ func (h *Handler) listServices(w http.ResponseWriter, r *http.Request) {
 }
 
 type ServiceInfo struct {
-	Name        string   `json:name`
-	Description string   `json:description`
-	Enabled     bool     `json:enabled`
-	Running     bool     `json:running`
-	Failed      bool     `json:failed`
-	Provides    []string `json:provides`
-	Depends     []string `json:depends`
-	Conflicts   []string `json:conflicts`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Enabled     bool     `json:"enabled"`
+	Running     bool     `json:"running"`
+	Failed      bool     `json:"failed"`
+	Provides    []string `json:"provides"`
+	Depends     []string `json:"depends"`
+	Conflicts   []string `json:"conflicts"`
 }
 
 type Error struct {
-	Code    int    `json:code`
-	Message string `json:message`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 func (e *Error) Error() string {
