@@ -123,42 +123,25 @@ func (m *Manager) setBaseDir() {
 	}
 }
 
-// SetLogger sets the logger to use.  This allows a framework to use a single
-// logger for everything.  Note that this must be called before services are
-// added in order to have any effect.
+// SetLogger is used to establish a logger.  It overrides the default, so it
+// shouldn't be used unless you want to control all logging.
 func (m *Manager) SetLogger(l *log.Logger) {
 	m.logger = l
 }
 
-// SetLogWriter works like SetLogger, except that it only sets an output
-// writer.  This is probably more convenient for most loggers.
-func (m *Manager) SetLogWriter(w io.Writer) {
-	m.logger = log.New(w, "["+m.Name()+"] ", log.LstdFlags)
-	m.writer = w
-}
-
 func (m *Manager) getLogger(s *Service) *log.Logger {
 
-	flags := log.LstdFlags
 	if m.logger != nil {
-		flags = m.logger.Flags()
-	}
-	if m.writer != nil {
-		prefix := "[" + s.Name() + "] "
-		return log.New(m.writer, prefix, flags)
-	} else if m.logger != nil {
 		return m.logger
 	}
-
 	// Default logger
-	prefix := "[" + s.Name() + "] "
 	if len(m.baseDir) == 0 {
-		return log.New(os.Stderr, prefix, flags)
+		return log.New(os.Stderr, "", 0)
 	}
 
 	if runtime.GOOS == "windows" {
 		// XXX: this needs to generate a proper Windows service log
-		return log.New(os.Stderr, prefix, log.LstdFlags)
+		return log.New(os.Stderr, "", 0)
 	}
 
 	// XXX: service specific file names?
@@ -166,9 +149,9 @@ func (m *Manager) getLogger(s *Service) *log.Logger {
 
 	w, e := os.OpenFile(f, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 	if e != nil {
-		return log.New(os.Stderr, prefix, log.LstdFlags)
+		return log.New(os.Stderr, "", log.LstdFlags)
 	}
-	return log.New(w, prefix, log.LstdFlags)
+	return log.New(w, "", log.LstdFlags)
 }
 
 func (m *Manager) monitor() {

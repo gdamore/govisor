@@ -164,7 +164,14 @@ func (h *Handler) clearService(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getLog(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Log TBD", http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	name := vars["service"]
+	if svc, e := h.findService(name); e != nil {
+		e.write(w)
+	} else {
+		lines := svc.GetLog()
+		h.writeJson(w, lines)
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {

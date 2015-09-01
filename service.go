@@ -85,6 +85,27 @@ type Service struct {
 	ratePeriod time.Duration
 	startTimes []time.Time
 	notify     func()
+	slog       *ServiceLog
+	mlog       *MultiLogger
+}
+
+const maxLogRecords = 1000
+
+type ServiceLog struct {
+	Records    []string
+	NumRecords int
+}
+
+func (s *ServiceLog) Write(b []byte) (int, error) {
+	if s.Records == nil {
+		s.Records = make([]string, maxLogRecords)
+	}
+	str := strings.Trim(string(b), "\n")
+	for _, line := range strings.Split(str, "\n") {
+		s.Records[s.NumRecords%len(s.Records)] = line
+		s.NumRecords++
+	}
+	return len(b), nil
 }
 
 // The service name.  This takes either the form <base> or <base>:<variant>.
@@ -344,7 +365,11 @@ func (s *Service) setProp(n PropertyName, v interface{}) error {
 				// Cannot change logger while service enabled.
 				return ErrPropReadOnly
 			}
+			if s.logger != nil {
+				s.mlog.DelLogger(s.logger)
+			}
 			s.logger = v
+			s.mlog.AddLogger(s.logger)
 		} else {
 			return ErrBadPropType
 		}
@@ -453,6 +478,24 @@ func (s *Service) GetProperty(n PropertyName) (interface{}, error) {
 	return s.prov.Property(n)
 }
 
+func (s *Service) GetLog() []string {
+	if m := s.mgr; m != nil {
+		m.lock()
+		defer m.unlock()
+	}
+	recs := make([]string, 0, s.slog.NumRecords%len(s.slog.Records))
+	cur := s.slog.NumRecords
+	cnt := cur % len(s.slog.Records)
+	if cnt > cur {
+		cnt = cur
+	}
+	for i := cur - cnt; i < cnt; i++ {
+		recs = append(recs, s.slog.Records[i%len(s.slog.Records)])
+
+	}
+	return recs
+}
+
 // setManager is called by the framework when the service is added to
 // the manager.  This calculates the various dependency graphs, updating
 // links to other services in the manager.
@@ -461,9 +504,7 @@ func (s *Service) setManager(mgr *Manager) {
 		// This is a serious programmer mistake
 		panic("Already added to a manager")
 	}
-
-	s.logger = mgr.getLogger(s)
-	s.prov.SetProperty(PropLogger, s.logger)
+	s.mlog.AddLogger(mgr.getLogger(s))
 	s.mgr = mgr
 
 	s.incompat = make(map[*Service]bool)
@@ -546,9 +587,7 @@ func (s *Service) delManager() {
 }
 
 func (s *Service) logf(fmt string, v ...interface{}) {
-	if s.logger != nil {
-		s.logger.Printf(fmt, v...)
-	}
+	s.mlog.Logger().Printf(fmt, v...)
 }
 
 func (s *Service) startRecurse() {
@@ -630,7 +669,7 @@ func (s *Service) checkService() error {
 	}
 	s.checking = true
 	if e := s.prov.Check(); e != nil {
-		s.logger.Printf("Service %s failed: %v", s.Name(), e)
+		s.logf("Service %s failed: %v", s.Name(), e)
 		s.failed = true
 		s.stopRecurse()
 		s.err = e
@@ -726,6 +765,11 @@ func NewService(p Provider) *Service {
 	s.conflicts = append([]string{}, p.Conflicts()...)
 	s.depends = append([]string{}, p.Depends()...)
 	s.provides = append([]string{}, p.Provides()...)
+	s.mlog = NewMultiLogger()
+	s.mlog.Logger().SetPrefix("[" + s.Name() + "] ")
+	s.prov.SetProperty(PropLogger, s.mlog.Logger())
+	s.slog = &ServiceLog{}
+	s.mlog.AddLogger(log.New(s.slog, "", log.LstdFlags))
 	p.SetProperty(PropNotify, s.doNotify)
 	return s
 }

@@ -162,6 +162,7 @@ func (p *Process) Start() error {
 		p.reason = e
 		return e
 	}
+	p.logger.Printf("Process id %d", cmd.Process.Pid)
 	p.process = cmd.Process
 	p.waiter.Add(1)
 

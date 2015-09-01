@@ -31,7 +31,7 @@ import (
 func TestProcessStartStop(t *testing.T) {
 	Convey("Test start/stop of a new process", t, func() {
 		m := NewManager("TestProcessStartStop")
-		m.SetLogWriter(&testLog{t: t})
+		SetTestLogger(t, m)
 		s1 := NewProcess("ProcessStartStop:S1", &exec.Cmd{
 			Path: "process_test.sh",
 			Args: []string{"process_test.sh", "3600"},
@@ -62,7 +62,7 @@ func TestProcessStartStop(t *testing.T) {
 func TestProcessFail(t *testing.T) {
 	Convey("Test a failing process", t, func() {
 		m := NewManager("TestProcessFail")
-		m.SetLogWriter(&testLog{t: t})
+		SetTestLogger(t, m)
 		s1 := NewProcess("ProcessFail:S1", &exec.Cmd{
 			Path: "process_test.sh",
 			Args: []string{"process_test.sh", "fail"},

@@ -157,11 +157,15 @@ var testS2 = &testS{
 	depends:   []string{"dep:S2"},
 }
 
+func SetTestLogger(t *testing.T, m *Manager) {
+	m.SetLogger(log.New(&testLog{t: t}, "", log.LstdFlags))
+}
+
 func WithManager(t *testing.T, name string, fn func(m *Manager)) func() {
 	return func() {
 		m := NewManager(name)
 		So(m, ShouldNotBeNil)
-		m.SetLogWriter(&testLog{t: t})
+		SetTestLogger(t, m)
 		Reset(func() {
 			m.Shutdown()
 		})
@@ -281,7 +285,7 @@ func TestGovisor(t *testing.T) {
 	Convey("Given a new govisor", t, func() {
 		m := NewManager("TestGoVisor")
 		So(m, ShouldNotBeNil)
-		m.SetLogWriter(&testLog{t: t})
+		SetTestLogger(t, m)
 		Convey("And new services S1 and S2", func() {
 			s1 := NewService(&t1)
 			So(s1, ShouldNotBeNil)
