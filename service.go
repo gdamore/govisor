@@ -79,6 +79,8 @@ type Service struct {
 	children   map[*Service]bool
 	incompat   map[*Service]bool
 	logger     *log.Logger
+	stamp      time.Time
+	reason     string
 	starts     int
 	rateLog    bool
 	rateLimit  int
@@ -138,6 +140,16 @@ func (s *Service) Provides() []string {
 // for how these are used.
 func (s *Service) Depends() []string {
 	return s.depends
+}
+
+// Status returns the most reason status message, and the time when the
+// status was recorded.
+func (s *Service) Status() (string, time.Time) {
+	if m := s.mgr; m != nil {
+		m.lock()
+		defer m.unlock()
+	}
+	return s.reason, s.stamp
 }
 
 // Conflicts returns a list of strings or service names that
@@ -209,10 +221,12 @@ func (s *Service) Enable() error {
 			return ErrConflict
 		}
 	}
+	s.reason = "Waiting to start"
+	s.stamp = time.Now()
 	s.logf("Enabling service %s", s.Name())
 	s.enabled = true
 	s.starts = 0
-	s.startRecurse()
+	s.startRecurse("Enabled service")
 	return nil
 }
 
@@ -231,10 +245,12 @@ func (s *Service) Disable() error {
 	}
 
 	s.logf("Disabling service %s", s.Name())
+	s.stamp = time.Now()
+	s.reason = "Disabled service"
 	s.enabled = false
 	s.failed = false
 	s.err = nil
-	s.stopRecurse()
+	s.stopRecurse("Disabled service")
 	return nil
 }
 
@@ -254,13 +270,15 @@ func (s *Service) Restart() error {
 
 	s.logf("Restarting service %s", s.Name())
 	s.enabled = false
-	s.stopRecurse()
+	s.stopRecurse("Restarted service")
 
+	s.stamp = time.Now()
+	s.reason = "Restarted service"
 	s.starts = 0
 	s.failed = false
 	s.err = nil
 	s.enabled = true
-	s.startRecurse()
+	s.startRecurse("Restarted service")
 	return nil
 }
 
@@ -275,12 +293,14 @@ func (s *Service) Clear() {
 	defer s.mgr.unlock()
 
 	if s.failed {
-		s.logf("Clearing failure on %s", s.Name())
+		s.reason = "Cleared fault"
+		s.stamp = time.Now()
+		s.logf("Clearing fault on %s", s.Name())
 	}
 	s.starts = 0
 	s.failed = false
 	s.err = nil
-	s.startRecurse()
+	s.startRecurse("Cleared fault")
 }
 
 // Check checks if a service is running, and performs any appropriate health
@@ -547,6 +567,8 @@ func (s *Service) setManager(mgr *Manager) {
 			}
 		}
 	}
+	s.stamp = time.Now()
+	s.reason = "Added service"
 	s.logf("Added service %s to %s: %s", s.Name(), mgr.Name(),
 		s.Description())
 	mgr.services[s] = true
@@ -583,6 +605,8 @@ func (s *Service) delManager() {
 		delete(s.parents, d)
 	}
 
+	s.reason = "Removed service"
+	s.stamp = time.Now()
 	s.mgr = nil
 }
 
@@ -590,7 +614,7 @@ func (s *Service) logf(fmt string, v ...interface{}) {
 	s.mlog.Logger().Printf(fmt, v...)
 }
 
-func (s *Service) startRecurse() {
+func (s *Service) startRecurse(detail string) {
 	if s.running {
 		return
 	}
@@ -606,19 +630,23 @@ func (s *Service) startRecurse() {
 	s.starts++
 	if e := s.prov.Start(); e != nil {
 		s.logf("Failed to start %s: %v", s.Name(), e)
+		s.reason = "Failed to start:" + e.Error()
+		s.stamp = time.Now()
 		s.err = e
 		s.failed = true
 		return
 	}
-	s.logf("Started %s", s.Name())
+	s.reason = "Started: " + detail
+	s.stamp = time.Now()
+	s.logf("Started %s: %s", s.Name(), detail)
 	s.running = true
 	s.failed = false
 	for child := range s.children {
-		child.startRecurse()
+		child.startRecurse("Dependency running")
 	}
 }
 
-func (s *Service) stopRecurse() {
+func (s *Service) stopRecurse(detail string) {
 	if !s.running || s.stopping {
 		return
 	}
@@ -627,10 +655,13 @@ func (s *Service) stopRecurse() {
 		if child.canRun() {
 			continue
 		}
-		child.stopRecurse()
+		child.stopRecurse("Dependency stopped")
 	}
 	s.prov.Stop()
-	s.logf("Stopped %s", s.Name())
+	s.reason = "Stopped: " + detail
+	s.stamp = time.Now()
+	s.logf("Stopped %s: %s", s.Name(), detail)
+
 	s.running = false
 	s.stopping = false
 }
@@ -669,9 +700,9 @@ func (s *Service) checkService() error {
 	}
 	s.checking = true
 	if e := s.prov.Check(); e != nil {
-		s.logf("Service %s failed: %v", s.Name(), e)
+		s.logf("Service %s faulted: %v", s.Name(), e)
 		s.failed = true
-		s.stopRecurse()
+		s.stopRecurse("Faulted: " + e.Error())
 		s.err = e
 		s.checking = false
 		return e
@@ -730,7 +761,7 @@ func (s *Service) tooQuickly() error {
 func (s *Service) selfHeal() {
 	if s.failed && s.restart {
 		s.logf("Attempting self-healing")
-		s.startRecurse()
+		s.startRecurse("Self-healing attempt")
 	}
 }
 

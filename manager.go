@@ -217,7 +217,7 @@ func (m *Manager) Shutdown() {
 	m.monitoring = false
 	for s := range m.services {
 		s.enabled = false
-		s.stopRecurse()
+		s.stopRecurse("Shutting down")
 		s.delManager()
 	}
 	m.unlock()

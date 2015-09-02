@@ -17,6 +17,7 @@ package rpc
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gdamore/govisor"
 	"github.com/gorilla/mux"
@@ -58,14 +59,16 @@ func (h *Handler) listServices(w http.ResponseWriter, r *http.Request) {
 }
 
 type ServiceInfo struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Enabled     bool     `json:"enabled"`
-	Running     bool     `json:"running"`
-	Failed      bool     `json:"failed"`
-	Provides    []string `json:"provides"`
-	Depends     []string `json:"depends"`
-	Conflicts   []string `json:"conflicts"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Enabled     bool      `json:"enabled"`
+	Running     bool      `json:"running"`
+	Failed      bool      `json:"failed"`
+	Provides    []string  `json:"provides"`
+	Depends     []string  `json:"depends"`
+	Conflicts   []string  `json:"conflicts"`
+	Status      string    `json:"status"`
+	TimeStamp   time.Time `json:"tstamp"`
 }
 
 type Error struct {
@@ -109,6 +112,7 @@ func (h *Handler) getService(w http.ResponseWriter, r *http.Request) {
 			Depends:     svc.Depends(),
 			Conflicts:   svc.Conflicts(),
 		}
+		info.Status, info.TimeStamp = svc.Status()
 		h.writeJson(w, info)
 	}
 }
