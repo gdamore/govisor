@@ -23,9 +23,9 @@ suitable for use by unprivileged users, and it is possible to run many copies
 of govisord on the same system (but you will have to choose different TCP
 management ports.)
 
-Govisord listens by default at http://localhost:8321/ - it does use any
-authentication at this point (yet), so be careful not to expose this to end
-users.
+Govisord listens by default at http://localhost:8321/
+
+See govisord/main.go for a list of options, etc.
 
 Govisor is designed for embedding as well.  You can embed the manager into
 your own application.  The REST API implementation provides a http.Handler,
@@ -36,6 +36,5 @@ TODO
 
 (See the github issues for the formal list.)
 
-* REST authentication
 * client API
 * termbox UI client
