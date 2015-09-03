@@ -12,19 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package rpc
+package rest
 
 import (
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/gdamore/govisor"
 	"github.com/gorilla/mux"
-)
-
-const (
-	mimeJson = "application/json; charset=UTF-8"
 )
 
 // Handler wraps a Manager, adding http.Handler functionality.
@@ -32,8 +27,6 @@ type Handler struct {
 	m *govisor.Manager
 	r *mux.Router
 }
-
-var ok struct{}
 
 func (h *Handler) internalError(w http.ResponseWriter, e error) {
 	http.Error(w, e.Error(), http.StatusInternalServerError)
@@ -48,6 +41,16 @@ func (h *Handler) writeJson(w http.ResponseWriter, v interface{}) {
 	}
 }
 
+func (h *Handler) writeError(w http.ResponseWriter, e *Error) {
+	if b, err := json.Marshal(e); err != nil {
+		h.internalError(w, err)
+	} else {
+		w.Header().Set("Content-Type", mimeJson)
+		w.WriteHeader(e.Code)
+		w.Write(b)
+	}
+}
+
 func (h *Handler) listServices(w http.ResponseWriter, r *http.Request) {
 	svcs := h.m.Services()
 	l := make([]string, 0, len(svcs))
@@ -56,35 +59,6 @@ func (h *Handler) listServices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJson(w, l)
-}
-
-type ServiceInfo struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Enabled     bool      `json:"enabled"`
-	Running     bool      `json:"running"`
-	Failed      bool      `json:"failed"`
-	Provides    []string  `json:"provides"`
-	Depends     []string  `json:"depends"`
-	Conflicts   []string  `json:"conflicts"`
-	Status      string    `json:"status"`
-	TimeStamp   time.Time `json:"tstamp"`
-}
-
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-func (e *Error) Error() string {
-	return e.Message
-}
-
-func (e *Error) write(w http.ResponseWriter) {
-	b, _ := json.Marshal(e)
-	w.Header().Set("Content-Type", mimeJson)
-	w.WriteHeader(e.Code)
-	w.Write(b)
 }
 
 func (h *Handler) findService(name string) (*govisor.Service, *Error) {
@@ -100,7 +74,7 @@ func (h *Handler) getService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["service"]
 	if svc, e := h.findService(name); e != nil {
-		e.write(w)
+		h.writeError(w, e)
 	} else {
 		info := &ServiceInfo{
 			Name:        svc.Name(),
@@ -121,10 +95,10 @@ func (h *Handler) enableService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["service"]
 	if svc, e := h.findService(name); e != nil {
-		e.write(w)
+		h.writeError(w, e)
 	} else if err := svc.Enable(); err != nil {
 		e = &Error{http.StatusBadRequest, err.Error()}
-		e.write(w)
+		h.writeError(w, e)
 	} else {
 		h.writeJson(w, ok)
 	}
@@ -134,10 +108,10 @@ func (h *Handler) disableService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["service"]
 	if svc, e := h.findService(name); e != nil {
-		e.write(w)
+		h.writeError(w, e)
 	} else if err := svc.Disable(); err != nil {
 		e = &Error{http.StatusBadRequest, err.Error()}
-		e.write(w)
+		h.writeError(w, e)
 	} else {
 		h.writeJson(w, ok)
 	}
@@ -147,10 +121,10 @@ func (h *Handler) restartService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["service"]
 	if svc, e := h.findService(name); e != nil {
-		e.write(w)
+		h.writeError(w, e)
 	} else if err := svc.Restart(); err != nil {
 		e = &Error{http.StatusBadRequest, err.Error()}
-		e.write(w)
+		h.writeError(w, e)
 	} else {
 		h.writeJson(w, ok)
 	}
@@ -160,7 +134,7 @@ func (h *Handler) clearService(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["service"]
 	if svc, e := h.findService(name); e != nil {
-		e.write(w)
+		h.writeError(w, e)
 	} else {
 		svc.Clear()
 		h.writeJson(w, ok)
@@ -171,7 +145,7 @@ func (h *Handler) getLog(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	name := vars["service"]
 	if svc, e := h.findService(name); e != nil {
-		e.write(w)
+		h.writeError(w, e)
 	} else {
 		lines := svc.GetLog()
 		h.writeJson(w, lines)

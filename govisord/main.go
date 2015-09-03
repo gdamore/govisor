@@ -45,7 +45,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gdamore/govisor"
-	"github.com/gdamore/govisor/rpc"
+	"github.com/gdamore/govisor/rest"
 )
 
 var addr string = "127.0.0.1:8321"
@@ -56,7 +56,7 @@ var passfile string = ""
 var genpass string = ""
 
 type MyHandler struct {
-	h      *rpc.Handler
+	h      *rest.Handler
 	auth   bool
 	passwd map[string]string
 	name   string
@@ -155,7 +155,7 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	h := &MyHandler{
-		h:      rpc.NewHandler(m),
+		h:      rest.NewHandler(m),
 		name:   name,
 		auth:   false,
 		passwd: make(map[string]string),

@@ -12,5 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package rpc implements RPC methods for remotely managing govisor.
-package rpc
+// Package rest implements REST API methods for remotely managing govisor.
+package rest
