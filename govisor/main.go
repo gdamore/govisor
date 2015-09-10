@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,7 +64,7 @@ func status(s *rest.ServiceInfo) string {
 	if s.Running {
 		return "running"
 	}
-	return "stopped"
+	return "standby"
 }
 
 func showStatus(s *rest.ServiceInfo) {
@@ -72,6 +73,37 @@ func showStatus(s *rest.ServiceInfo) {
 	d -= d % time.Second
 	fmt.Printf("%10s %10s %10s %s\n", s.Name,
 		status(s), d.String(), s.Status)
+}
+
+type sorted []*rest.ServiceInfo
+
+func (s sorted) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s sorted) Len() int {
+	return len(s)
+}
+
+func (s sorted) Less(i, j int) bool {
+	a := s[i]
+	b := s[j]
+
+	if a.Failed != b.Failed {
+		// put failed items at front
+		return a.Failed
+	}
+	if a.Enabled != b.Enabled {
+		// enabled in front of non-enabled items
+		return a.Enabled
+	}
+	// We don't worry about suspended items vs. running -- no clear order
+	// there.  We just sort based on name
+	return a.Name < b.Name
+}
+
+func sortInfos(items []*rest.ServiceInfo) {
+	sort.Sort(sorted(items))
 }
 
 func main() {
@@ -103,6 +135,7 @@ func main() {
 		if e != nil {
 			log.Fatalf("Failed: %v", e)
 		}
+		sort.Strings(s)
 		for _, name := range s {
 			fmt.Println(name)
 		}
@@ -203,10 +236,13 @@ func main() {
 				log.Printf("Failed: %v", e)
 			}
 		}
+		sortInfos(infos)
 		// XXX: sort infos - errors at top, disabled at bottom, etc.
 		for _, info := range infos {
 			showStatus(info)
 		}
+	case "ui":
+		doUI(client, addr)
 	default:
 		usage()
 	}
