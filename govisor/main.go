@@ -122,8 +122,7 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		// XXX: in future, go GUI here
-		log.Fatalf("No subcommand specified")
+		args = []string{"ui"}
 	}
 
 	switch args[0] {
@@ -226,7 +225,6 @@ func main() {
 			// No services?
 			return
 		}
-		// XXX: check for dups?
 		infos := []*rest.ServiceInfo{}
 		for _, n := range names {
 			info, e := client.GetService(n)
@@ -237,13 +235,10 @@ func main() {
 			}
 		}
 		sortInfos(infos)
-		// XXX: sort infos - errors at top, disabled at bottom, etc.
 		for _, info := range infos {
 			showStatus(info)
 		}
 	case "ui":
 		doUI(client, addr)
-	default:
-		usage()
 	}
 }

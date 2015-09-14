@@ -82,22 +82,23 @@ func (m *Entries) GetCursor() (int, int, bool, bool) {
 func (m *Entries) MoveCursor(offx, offy int) {
 	m.curx += offx
 	m.cury += offy
-	m.updateCursor()
+	m.updateCursor(true)
 }
 
 func (m *Entries) SetCursor(x, y int) {
 	m.curx = x
 	m.cury = y
-	m.updateCursor()
+	m.updateCursor(true)
 }
 
 func (m *Entries) unselect() {
 	m.selected = -1
 	m.cury = 0
 	m.curx = 0
+	m.updateCursor(false)
 }
 
-func (m *Entries) updateCursor() {
+func (m *Entries) updateCursor(selected bool) {
 	if m.curx > m.width-1 {
 		m.curx = m.width - 1
 	}
@@ -110,7 +111,7 @@ func (m *Entries) updateCursor() {
 	if m.cury < 0 {
 		m.cury = 0
 	}
-	if m.height > 0 {
+	if selected && m.height > 0 {
 		if m.selected < 0 {
 			m.curx = 0
 			m.cury = 0
@@ -270,8 +271,7 @@ func (e *Entries) HandleEvent(ev topsl.Event) bool {
 		case 0:
 			switch ev.Key {
 			case topsl.KeyEsc:
-				e.SetCursor(0, 0)
-				e.selected = -1
+				e.unselect()
 				return true
 			}
 		}
@@ -377,49 +377,6 @@ func (i *InfoPanel) Resize() {
 func (i *InfoPanel) setInfo(s *rest.ServiceInfo) {
 	i.info = s
 	i.Draw()
-	return
-	lines := make([]string, 0, 8)
-	d := time.Now().Sub(s.TimeStamp)
-	d -= d % time.Second
-	lines = append(lines, fmt.Sprintf("%13s %s", "Name:", s.Name))
-	lines = append(lines, fmt.Sprintf("%13s %s", "Description:",
-		s.Description))
-	lines = append(lines, fmt.Sprintf("%13s %s", "Status:", status(s)))
-	lines = append(lines, fmt.Sprintf("%13s %v (%v)", "Since:", d, s.TimeStamp))
-	lines = append(lines, fmt.Sprintf("%13s %s", "Detail:", s.Status))
-
-	l := fmt.Sprintf("%13s", "Provides:")
-	for _, p := range s.Provides {
-		l = l + fmt.Sprintf(" %s", p)
-	}
-	lines = append(lines, l)
-
-	l = fmt.Sprintf("%13s", "Depends:")
-	for _, p := range s.Depends {
-		l = l + fmt.Sprintf(" %s", p)
-	}
-	lines = append(lines, l)
-
-	l = fmt.Sprintf("%13s", "Conflicts:")
-	for _, p := range s.Conflicts {
-		l = l + fmt.Sprintf("   %s", p)
-	}
-	lines = append(lines, l)
-
-	i.titlebar.SetCenter("Details for "+s.Name, topsl.StyleTitle)
-	i.statusbar.SetStatus("")
-	if !s.Enabled {
-		i.statusbar.SetNormal()
-	} else if s.Failed {
-		i.statusbar.SetFail()
-	} else if s.Running {
-		i.statusbar.SetGood()
-	} else {
-		i.statusbar.SetWarn()
-	}
-
-	i.text.SetLines(lines)
-	i.keybar.SetKeys([]string{"_Quit"})
 }
 
 func (a *App) setContent(w topsl.Widget) {

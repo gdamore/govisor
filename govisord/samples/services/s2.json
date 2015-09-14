@@ -1,0 +1,6 @@
+{
+	"name": "s2:ok",
+	"description": "first s2",
+	"command": [ "sleep", "3600" ]
+}
+

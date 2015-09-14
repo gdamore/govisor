@@ -1,0 +1,7 @@
+{
+	"name": "d3:s3",
+	"description": "d3 depends on s3",
+	"depends": [ "s3" ],
+	"command": [ "echo", "this shouldn't run" ]
+}
+

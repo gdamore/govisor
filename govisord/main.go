@@ -85,21 +85,27 @@ func (h *MyHandler) loadPasswdFile(name string) error {
 		} else if e != nil {
 			return e
 		}
-		h.passwd[rec[0]] = h.passwd[rec[1]]
+		h.passwd[rec[0]] = rec[1]
 	}
+	h.auth = true
 	file.Close()
 	return nil
 }
 
 func (h *MyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Consider adding logging, and timeouts, to mitigate
 	if h.auth {
-		if user, pass, ok := r.BasicAuth(); !ok {
+		user, pass, ok := r.BasicAuth()
+		if !ok {
 			h.needAuth(w, r)
 			return
-		} else if enc, ok := h.passwd[user]; !ok {
+		}
+		enc, ok := h.passwd[user]
+		if !ok {
 			h.needAuth(w, r)
 			return
-		} else if e := bcrypt.CompareHashAndPassword([]byte(enc), []byte(pass)); e != nil {
+		}
+		if e := bcrypt.CompareHashAndPassword([]byte(enc), []byte(pass)); e != nil {
 			h.needAuth(w, r)
 			return
 		}
@@ -169,14 +175,17 @@ func main() {
 		}
 		enc, e := bcrypt.GenerateFromPassword([]byte(rec[1]), 0)
 		if e != nil {
-			log.Fatalf("bccrypt: %v", e)
+			log.Fatalf("bcrypt: %v", e)
 		}
 		h.passwd[rec[0]] = string(enc)
-		log.Printf("Encrypted password is %s\n", string(enc))
+		log.Printf("Encrypted password is '%s'", string(enc))
 	}
 	if passfile != "" {
-		h.auth = true
 		if e := h.loadPasswdFile(passfile); e != nil {
+			log.Fatalf("Unable to load passwd file: %v", e)
+		}
+	} else if _, err := os.Stat(path.Join(dir, "passwd")); err == nil {
+		if e := h.loadPasswdFile(path.Join(dir, "passwd")); e != nil {
 			log.Fatalf("Unable to load passwd file: %v", e)
 		}
 	}

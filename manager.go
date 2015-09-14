@@ -82,7 +82,6 @@ func (m *Manager) watchSerial(old int64, src *int64, expire time.Duration) int64
 	var timer *time.Timer
 	var rv int64
 
-	log.Printf("Watching sn %x for %v", old, expire)
 	// Schedule timeout
 	if expire > 0 {
 		timer = time.AfterFunc(expire, func() {

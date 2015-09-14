@@ -1,0 +1,6 @@
+{
+	"name": "s1:ok",
+	"description": "first s1",
+	"command": [ "echo", "hello, world" ]
+}
+

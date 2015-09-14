@@ -1,0 +1,7 @@
+{
+	"name": "d1:ok",
+	"description": "d1 depends on s1",
+	"command": [ "echo", "hello, world" ],
+	"depends": [ "s1" ]
+}
+

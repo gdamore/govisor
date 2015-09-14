@@ -1,0 +1,6 @@
+{
+	"name": "s3:fail",
+	"description": "this one fails",
+	"command": [ "false" ]
+}
+

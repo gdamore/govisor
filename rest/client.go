@@ -157,7 +157,7 @@ func (c *Client) poll(url string, etag string, wait bool, v interface{}) (string
 		return "", e
 	}
 	if c.auth {
-		c.SetAuth(c.user, c.pass)
+		req.SetBasicAuth(c.user, c.pass)
 	}
 	client := c.client
 	if etag != "" {
