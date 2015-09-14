@@ -17,6 +17,8 @@ package rest
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gdamore/govisor"
 	"github.com/gorilla/mux"
@@ -51,18 +53,67 @@ func (h *Handler) writeError(w http.ResponseWriter, e *Error) {
 	}
 }
 
+func (h *Handler) checkPoll(r *http.Request,
+	watchFn func(old int64, expire time.Duration) int64) {
+	if ptag := r.Header.Get(PollEtagHeader); len(ptag) < 2 {
+		return
+	} else if ptag[0] != '"' || ptag[len(ptag)-1] != '"' {
+		return
+	} else if v, e := strconv.ParseInt(ptag[1:len(ptag)-1], 16, 64); e != nil {
+		return
+	} else {
+		ptime, _ := strconv.Atoi(r.Header.Get(PollTimeHeader))
+		watchFn(v, time.Duration(ptime)*time.Second)
+	}
+}
+
+func (h *Handler) condCheckGet(w http.ResponseWriter, r *http.Request,
+	etag string, ts time.Time) bool {
+
+	if chkTag := r.Header.Get("If-None-Match"); chkTag == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return false
+	}
+	if chkTime := r.Header.Get("If-Modified-Since"); chkTime == "" {
+		return true
+	} else {
+		when, e := time.Parse(http.TimeFormat, chkTime)
+		if e != nil {
+			return true
+		}
+		// Round up to 1 nearest second.  Note that the carefully
+		// chosen use of ts.Before means that this will match
+		// if the same timestamp is used.
+		if ts.Before(when.Add(time.Second)) {
+			w.WriteHeader(http.StatusNotModified)
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Handler) listServices(w http.ResponseWriter, r *http.Request) {
-	svcs := h.m.Services()
+
+	h.checkPoll(r, h.m.WatchServices)
+	svcs, sn, ts := h.m.Services()
 	l := make([]string, 0, len(svcs))
+
 	for _, svc := range svcs {
 		l = append(l, svc.Name())
 	}
-
+	etag := "\"" + strconv.FormatInt(sn, 16) + "\""
+	if !h.condCheckGet(w, r, etag, ts) {
+		return
+	}
+	w.Header().Set("Etag", etag)
+	w.Header().Set("Last-Modified", ts.UTC().Format(http.TimeFormat))
 	h.writeJson(w, l)
 }
 
+// TODO consider conditionalizing this
 func (h *Handler) findService(name string) (*govisor.Service, *Error) {
-	for _, svc := range h.m.Services() {
+	svcs, _, _ := h.m.Services()
+	for _, svc := range svcs {
 		if svc.Name() == name {
 			return svc, nil
 		}
@@ -71,12 +122,23 @@ func (h *Handler) findService(name string) (*govisor.Service, *Error) {
 }
 
 func (h *Handler) getService(w http.ResponseWriter, r *http.Request) {
+
 	vars := mux.Vars(r)
 	name := vars["service"]
-	if svc, e := h.findService(name); e != nil {
+	svc, e := h.findService(name)
+	if e != nil {
 		h.writeError(w, e)
-	} else {
-		info := &ServiceInfo{
+		return
+	}
+	h.checkPoll(r, svc.WatchService)
+	var info *ServiceInfo
+	// This loop ensures we provide a consistent view of
+	// the service.  We assume (hope!) that the service isn't
+	// changing so quickly that we can't complete all these in
+	// the time it takes for a single loop iteration.
+	for {
+		sn := svc.Serial() // must be at start
+		info = &ServiceInfo{
 			Name:        svc.Name(),
 			Description: svc.Description(),
 			Enabled:     svc.Enabled(),
@@ -85,10 +147,27 @@ func (h *Handler) getService(w http.ResponseWriter, r *http.Request) {
 			Provides:    svc.Provides(),
 			Depends:     svc.Depends(),
 			Conflicts:   svc.Conflicts(),
+			Serial:      strconv.FormatInt(sn, 16),
 		}
 		info.Status, info.TimeStamp = svc.Status()
-		h.writeJson(w, info)
+		// check must be last
+		if newsn := svc.Serial(); sn == newsn {
+			break
+		} else {
+			sn = newsn
+		}
 	}
+
+	etag := "\"" + info.Serial + "\""
+	if !h.condCheckGet(w, r, etag, info.TimeStamp) {
+		return
+	}
+
+	w.Header().Set("Etag", etag)
+	w.Header().Set("Last-Modified",
+		info.TimeStamp.UTC().Format(http.TimeFormat))
+	h.writeJson(w, info)
+
 }
 
 func (h *Handler) enableService(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +231,26 @@ func (h *Handler) getLog(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) getManager(w http.ResponseWriter, r *http.Request) {
+	h.checkPoll(r, h.m.WatchSerial)
+	info := h.m.GetInfo()
+	sstr := strconv.FormatInt(info.Serial, 16)
+	etag := "\"" + sstr + "\""
+	i := &ManagerInfo{
+		Name:       info.Name,
+		Serial:     sstr,
+		CreateTime: info.CreateTime,
+		UpdateTime: info.UpdateTime,
+	}
+	if !h.condCheckGet(w, r, etag, info.UpdateTime) {
+		return
+	}
+	w.Header().Set("Etag", etag)
+	w.Header().Set("Last-Modified",
+		i.UpdateTime.UTC().Format(http.TimeFormat))
+	h.writeJson(w, i)
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	h.r.ServeHTTP(w, req)
 }
@@ -159,6 +258,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func NewHandler(m *govisor.Manager) *Handler {
 	r := mux.NewRouter()
 	h := &Handler{m: m, r: r}
+	r.HandleFunc("/", h.getManager).Methods("GET")
 	r.HandleFunc("/services", h.listServices).Methods("GET")
 	r.HandleFunc("/services/{service}", h.getService).Methods("GET")
 	r.HandleFunc("/services/{service}/enable", h.enableService).Methods("POST")

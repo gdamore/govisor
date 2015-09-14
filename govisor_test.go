@@ -277,6 +277,49 @@ func TestDependencies(t *testing.T) {
 		}))
 }
 
+func checkSerial(m *Manager, sn int64) int64 {
+	newsn := m.Serial()
+	So(newsn, ShouldBeGreaterThan, sn)
+	return newsn
+}
+
+func TestSerial(t *testing.T) {
+	Convey("Serial numbers", t, WithManager(t, "Serial", func(m *Manager) {
+		sn := m.Serial()
+		So(sn, ShouldNotEqual, 0)
+		s1 := NewService(&testS{name: "test:s1"})
+		So(s1, ShouldNotBeNil)
+		m.AddService(s1)
+		sn = checkSerial(m, sn)
+		s2 := NewService(&testS{name: "test:s2"})
+		So(s2, ShouldNotBeNil)
+		e := s2.SetProperty(PropDepends, []string{"test:s1"})
+		m.AddService(s2)
+		So(e, ShouldBeNil)
+		sn = checkSerial(m, sn)
+
+		start := time.Now()
+		end := start
+		endsn := sn
+		go func() {
+			endsn = m.WatchSerial(sn, time.Second*5)
+			end = time.Now()
+		}()
+		time.Sleep(time.Millisecond * 20)
+		e = s1.Enable()
+		So(e, ShouldBeNil)
+		So(m.Serial(), ShouldBeGreaterThan, sn)
+		time.Sleep(time.Millisecond * 10)
+		So(endsn, ShouldBeGreaterThan, sn)
+		So(end.Sub(start), ShouldBeLessThan, time.Second)
+		So(end.Sub(start), ShouldBeGreaterThan, time.Millisecond*10)
+		t.Logf("took %v", end.Sub(start))
+		So(endsn, ShouldEqual, m.Serial())
+		So(s2.Serial(), ShouldEqual, sn)
+		So(s1.Serial(), ShouldEqual, endsn)
+	}))
+}
+
 // XXX: This test function needs to be refactored
 func TestGovisor(t *testing.T) {
 	t1 := *testS1

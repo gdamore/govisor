@@ -32,7 +32,20 @@ type Manager struct {
 	writer     io.Writer
 	cleanup    bool
 	monitoring bool
+	serial     int64
+	listSerial int64
+	listStamp  time.Time
+	createTime time.Time
+	updateTime time.Time
 	mx         sync.Mutex
+	cvs        map[*sync.Cond]bool
+}
+
+type ManagerInfo struct {
+	Name       string
+	Serial     int64
+	UpdateTime time.Time
+	CreateTime time.Time
 }
 
 func (m *Manager) lock() {
@@ -43,6 +56,81 @@ func (m *Manager) unlock() {
 	m.mx.Unlock()
 }
 
+// bumpSerial increments the serial and notifies watchers.  It returns
+// the new serial number, so that it can be stored in services.
+// Call with lock held.
+func (m *Manager) bumpSerial() int64 {
+	m.updateTime = time.Now()
+	m.serial++
+	rv := m.serial
+	for cv := range m.cvs {
+		// NB: If the lock is not held here, then there is a risk
+		// that the woken goroutines won't get see the updated
+		// serial number!!
+		cv.Broadcast()
+	}
+	return rv
+}
+
+// watchSerial monitors for a change in a specific serial number.  It returns
+// the new serial number when it changes.  If the serial number has not
+// changed in the given duration then the old value is returned.  A poll
+// can be done by supplying 0 for the expiration.
+func (m *Manager) watchSerial(old int64, src *int64, expire time.Duration) int64 {
+	expired := false
+	cv := sync.NewCond(&m.mx)
+	var timer *time.Timer
+	var rv int64
+
+	log.Printf("Watching sn %x for %v", old, expire)
+	// Schedule timeout
+	if expire > 0 {
+		timer = time.AfterFunc(expire, func() {
+			m.lock()
+			expired = true
+			cv.Broadcast()
+			m.unlock()
+		})
+	} else {
+		expired = true
+	}
+
+	m.lock()
+	m.cvs[cv] = true
+	for {
+		rv = *src
+		if rv != old || expired {
+			break
+		}
+		cv.Wait()
+	}
+	delete(m.cvs, cv)
+	m.unlock()
+	if timer != nil {
+		timer.Stop()
+	}
+	return rv
+}
+
+// WatchSerial monitors for a change in the global serial number.
+func (m *Manager) WatchSerial(old int64, expire time.Duration) int64 {
+	return m.watchSerial(old, &m.serial, expire)
+}
+
+// WatchServices monitors for a change in the list of services.
+func (m *Manager) WatchServices(old int64, expire time.Duration) int64 {
+	return m.watchSerial(old, &m.listSerial, expire)
+}
+
+// Serial returns the global serial number.  This is incremented
+// anytime a service has a state change.
+func (m *Manager) Serial() int64 {
+	m.lock()
+	rv := m.serial
+	m.unlock()
+	return rv
+}
+
 // Name returns the name the manager was allocated with.  This makes it
 // possible to distinguish between separate manager instances.  This name
 // can influence logged messages and file/directory names.
@@ -50,10 +138,27 @@ func (m *Manager) Name() string {
 	return m.name
 }
 
+// GetInfo returns top-level information about the Manager.  This is done
+// in a manner that ensures that the info is consistent.
+func (m *Manager) GetInfo() *ManagerInfo {
+	m.lock()
+	i := &ManagerInfo{
+		Name:       m.name,
+		Serial:     m.serial,
+		CreateTime: m.createTime,
+		UpdateTime: m.updateTime,
+	}
+	m.unlock()
+	return i
+}
+
 // AddService adds a service, registering it, to the manager.
 func (m *Manager) AddService(s *Service) {
 	m.lock()
 	s.setManager(m)
+	m.listSerial = m.bumpSerial()
+	s.serial = m.bumpSerial()
+	m.listStamp = time.Now()
 	m.unlock()
 }
 
@@ -65,21 +170,26 @@ func (m *Manager) DeleteService(s *Service) error {
 		return ErrIsEnabled
 	}
 	s.delManager()
+	m.listSerial = m.bumpSerial()
+	s.serial = m.bumpSerial()
+	m.listStamp = time.Now()
 	m.unlock()
 	return nil
 }
 
 // Services returns all of our services.  Note that the order is
 // arbitrary.  (At present it happens to be done based on order of
-// addition.
-func (m *Manager) Services() []*Service {
+// addition.)
+func (m *Manager) Services() ([]*Service, int64, time.Time) {
 	m.lock()
 	rv := make([]*Service, 0, len(m.services))
 	for s := range m.services {
 		rv = append(rv, s)
 	}
+	ts := m.listStamp
+	sn := m.listSerial
 	m.unlock()
-	return rv
+	return rv, sn, ts
 }
 
 // FindServices finds the list of services that have either a matching
@@ -227,8 +337,16 @@ func NewManager(name string) *Manager {
 	if name == "" {
 		name = "govisor"
 	}
-	m := &Manager{name: name}
+	// We set the origin serial number to the current timestamp in nsec.
+	// The assumption here is that we won't have changes to serial number
+	// occur at frequency > 1GHz.  Hence, it should be safe for us to use
+	// these as unique values, and this may help clients that cache force
+	// an invalidation if the server for some reason restarts.
+	m := &Manager{name: name, serial: time.Now().UnixNano()}
 	m.services = make(map[*Service]bool)
+	m.cvs = make(map[*sync.Cond]bool)
+	m.createTime = time.Now()
+	m.updateTime = m.createTime
 	m.setBaseDir()
 	go m.monitor()
 	return m

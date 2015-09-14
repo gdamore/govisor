@@ -89,6 +89,7 @@ type Service struct {
 	notify     func()
 	slog       *ServiceLog
 	mlog       *MultiLogger
+	serial     int64
 }
 
 const maxLogRecords = 1000
@@ -142,6 +143,16 @@ func (s *Service) Depends() []string {
 	return s.depends
 }
 
+func (s *Service) Serial() int64 {
+	var rv int64
+	if m := s.mgr; m != nil {
+		m.lock()
+		rv = s.serial
+		m.unlock()
+	}
+	return rv
+}
+
 // Status returns the most reason status message, and the time when the
 // status was recorded.
 func (s *Service) Status() (string, time.Time) {
@@ -150,6 +161,19 @@ func (s *Service) Status() (string, time.Time) {
 		defer m.unlock()
 	}
 	return s.reason, s.stamp
+}
+
+func (s *Service) WatchService(old int64, expire time.Duration) int64 {
+	if m := s.mgr; m != nil {
+		return m.watchSerial(old, &s.serial, expire)
+	}
+	// This isn't perfect, as it won't wake up when if a manager is
+	// added later.  But really, nobody ought to be calling this unless
+	// the service is added to a manager.
+	if old == s.serial {
+		time.Sleep(expire)
+	}
+	return s.serial
 }
 
 // Conflicts returns a list of strings or service names that
@@ -221,6 +245,7 @@ func (s *Service) Enable() error {
 			return ErrConflict
 		}
 	}
+	s.serial = s.mgr.bumpSerial()
 	s.reason = "Waiting to start"
 	s.stamp = time.Now()
 	s.logf("Enabling service %s", s.Name())
@@ -244,6 +269,7 @@ func (s *Service) Disable() error {
 		return nil
 	}
 
+	s.serial = s.mgr.bumpSerial()
 	s.logf("Disabling service %s", s.Name())
 	s.stamp = time.Now()
 	s.reason = "Disabled service"
@@ -268,6 +294,7 @@ func (s *Service) Restart() error {
 		return nil
 	}
 
+	s.serial = s.mgr.bumpSerial()
 	s.logf("Restarting service %s", s.Name())
 	s.enabled = false
 	s.stopRecurse("Restarted service")
@@ -292,6 +319,7 @@ func (s *Service) Clear() {
 	s.mgr.lock()
 	defer s.mgr.unlock()
 
+	s.serial = s.mgr.bumpSerial()
 	if s.failed {
 		s.reason = "Cleared fault"
 		s.stamp = time.Now()
@@ -377,6 +405,9 @@ func (s *Service) setProp(n PropertyName, v interface{}) error {
 			// added to a service.
 			return ErrPropReadOnly
 		}
+		// We might fail, but better to bump serial number than to
+		// not bump it when we should have
+		s.serial = m.bumpSerial()
 	}
 	switch n {
 	case PropLogger:
@@ -628,6 +659,7 @@ func (s *Service) startRecurse(detail string) {
 		s.startTimes[s.starts%s.rateLimit] = time.Now()
 	}
 	s.starts++
+	s.serial = s.mgr.bumpSerial()
 	if e := s.prov.Start(); e != nil {
 		s.logf("Failed to start %s: %v", s.Name(), e)
 		s.reason = "Failed to start:" + e.Error()
@@ -657,6 +689,7 @@ func (s *Service) stopRecurse(detail string) {
 		}
 		child.stopRecurse("Dependency stopped")
 	}
+	s.serial = s.mgr.bumpSerial()
 	s.prov.Stop()
 	s.reason = "Stopped: " + detail
 	s.stamp = time.Now()
@@ -700,6 +733,7 @@ func (s *Service) checkService() error {
 	}
 	s.checking = true
 	if e := s.prov.Check(); e != nil {
+		s.serial = s.mgr.bumpSerial()
 		s.logf("Service %s faulted: %v", s.Name(), e)
 		s.failed = true
 		s.stopRecurse("Faulted: " + e.Error())

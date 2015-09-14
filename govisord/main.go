@@ -146,7 +146,8 @@ func main() {
 		}
 	}
 	if enable {
-		for _, s := range m.Services() {
+		svcs, _, _ := m.Services()
+		for _, s := range svcs {
 			s.Enable()
 		}
 	}

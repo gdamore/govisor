@@ -15,6 +15,7 @@
 package rest
 
 import (
+	"sync"
 	"time"
 )
 
@@ -22,7 +23,29 @@ const (
 	mimeJson = "application/json; charset=UTF-8"
 )
 
+const (
+	// PollHeader should be set to the last Etag on an incoming request.
+	// If set we will wait until the resource has an ETag that is different
+	// from the supplied value, yielding a form of long polling.
+	// This is only valid with GET requests.  Note that the service may
+	// return early without actually waiting, even if the ETag has not
+	// changed.  Typically there is a default timeout of around a minute
+	// to make sure that the client is alive and well.
+	PollEtagHeader = "X-Govisor-Poll-Etag"
+	PollTimeHeader = "X-Govisor-Poll-Time"
+)
+
 var ok struct{}
+
+type ManagerInfo struct {
+	Name       string    `json:"name"`
+	Serial     string    `json:"serial"`
+	CreateTime time.Time `json:"created"`
+	UpdateTime time.Time `json:"updated"`
+	cv         *sync.Cond
+	etag       string
+	url        string
+}
 
 type ServiceInfo struct {
 	Name        string    `json:"name"`
@@ -35,6 +58,10 @@ type ServiceInfo struct {
 	Conflicts   []string  `json:"conflicts"`
 	Status      string    `json:"status"`
 	TimeStamp   time.Time `json:"tstamp"`
+	Serial      string    `json:"serial"`
+	cv          *sync.Cond
+	etag        string
+	url         string
 }
 
 type Error struct {

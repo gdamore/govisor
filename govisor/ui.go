@@ -38,7 +38,7 @@ func init() {
 type App struct {
 	entries   *Entries
 	log       *topsl.TextArea
-	info      *topsl.TextArea
+	info      *InfoPanel
 	help      *topsl.TextArea
 	about     *topsl.TextArea
 	titlebar  *topsl.TitleBar
@@ -67,8 +67,11 @@ type Entries struct {
 	ndisabled int
 	nrunning  int
 	status    string
+	keys      []string
 	view      *topsl.CellView
-
+	statusbar *topsl.StatusBar
+	keybar    *topsl.KeyBar
+	titlebar  *topsl.TitleBar
 	sync.Mutex
 }
 
@@ -79,13 +82,13 @@ func (m *Entries) GetCursor() (int, int, bool, bool) {
 func (m *Entries) MoveCursor(offx, offy int) {
 	m.curx += offx
 	m.cury += offy
-	m.limitCursor()
+	m.updateCursor()
 }
 
 func (m *Entries) SetCursor(x, y int) {
 	m.curx = x
 	m.cury = y
-	m.limitCursor()
+	m.updateCursor()
 }
 
 func (m *Entries) unselect() {
@@ -94,7 +97,7 @@ func (m *Entries) unselect() {
 	m.curx = 0
 }
 
-func (m *Entries) limitCursor() {
+func (m *Entries) updateCursor() {
 	if m.curx > m.width-1 {
 		m.curx = m.width - 1
 	}
@@ -116,17 +119,36 @@ func (m *Entries) limitCursor() {
 	} else {
 		m.selected = -1
 	}
+
+	words := []string{"_Quit", "_Help"}
+	if m.selected >= 0 && m.selected < len(m.items) {
+		info := m.items[m.selected]
+
+		words = append(words, "_Info")
+		words = append(words, "_Log")
+		if !info.Enabled {
+			words = append(words, "_Enable")
+		} else {
+			words = append(words, "_Disable")
+			if info.Failed {
+				words = append(words, "_Clear fault")
+			}
+			words = append(words, "_Restart")
+		}
+	}
+	m.keys = words
+	if m.keybar != nil {
+		m.keybar.SetKeys(words)
+	}
 }
 
 func (m *Entries) SetInfos(items []*rest.ServiceInfo) {
 	sortInfos(items)
 	m.items = items
+	m.update()
 }
 
-func (m *Entries) updateApp(app *App) {
-	s := app.statusbar
-	k := app.keybar
-
+func (m *Entries) update() {
 	lines := make([]string, 0, len(m.items))
 	styles := make([]topsl.Style, 0, len(m.items))
 
@@ -175,37 +197,7 @@ func (m *Entries) updateApp(app *App) {
 		len(m.items),
 		m.nfailed, m.nrunning, m.nstopped, m.ndisabled)
 
-	if app.content == app.entries {
-
-		if m.nfailed > 0 {
-			s.SetFail()
-		} else if m.nstopped > 0 {
-			s.SetWarn()
-		} else if m.nrunning > 0 {
-			s.SetGood()
-		} else {
-			s.SetNormal()
-		}
-		s.SetStatus(m.status)
-
-		words := []string{"_Quit", "_Help"}
-		if m.selected >= 0 && m.selected < len(m.items) {
-			info := m.items[m.selected]
-
-			words = append(words, "_Info")
-			words = append(words, "_Log")
-			if !info.Enabled {
-				words = append(words, "_Enable")
-			} else {
-				words = append(words, "_Disable")
-				if info.Failed {
-					words = append(words, "_Clear fault")
-				}
-				words = append(words, "_Restart")
-			}
-		}
-		k.SetKeys(words)
-	}
+	m.Draw()
 }
 
 func (m *Entries) GetCell(x, y int) (rune, topsl.Style) {
@@ -248,6 +240,18 @@ func (m *Entries) getSelected() *rest.ServiceInfo {
 }
 
 func (e *Entries) Draw() {
+	if e.nfailed > 0 {
+		e.statusbar.SetFail()
+	} else if e.nstopped > 0 {
+		e.statusbar.SetWarn()
+	} else if e.nrunning > 0 {
+		e.statusbar.SetGood()
+	} else {
+		e.statusbar.SetNormal()
+	}
+	e.statusbar.SetStatus(e.status)
+
+	e.keybar.SetKeys(e.keys)
 	e.view.Draw()
 }
 
@@ -275,60 +279,50 @@ func (e *Entries) HandleEvent(ev topsl.Event) bool {
 	return e.view.HandleEvent(ev)
 }
 
-func NewEntries() *Entries {
+func NewEntries(a *App) *Entries {
 	e := &Entries{}
 	e.view = topsl.NewCellView()
 	e.view.SetModel(e)
+	e.keybar = a.keybar
+	e.titlebar = a.titlebar
+	e.statusbar = a.statusbar
 	return e
 }
 
-func (a *App) setContent(w topsl.Widget) {
-	a.content = w
-	a.panel.SetContent(w)
+type InfoPanel struct {
+	text      *topsl.TextArea
+	info      *rest.ServiceInfo
+	statusbar *topsl.StatusBar
+	keybar    *topsl.KeyBar
+	titlebar  *topsl.TitleBar
 }
 
-func (a *App) doHelp() {
-	a.help.SetLines([]string{
-		"Insert help text here.",
-		"",
-		"This program is distributed under the Apache 2.0 License",
-		"Copyright 2015 The Govisor Authors",
-	})
-	a.titlebar.SetCenter("Help", topsl.StyleTitle)
-	a.keybar.SetKeys([]string{"_Quit"})
-	a.setContent(a.help)
-}
-
-func (a *App) doEntries() {
-	a.titlebar.SetCenter(a.server, topsl.StyleTitle)
-	a.keybar.SetKeys([]string{
-		"_Quit",
-		"_Help",
-		"_Restart",
-		"_Enable",
-		"_Disable",
-		"_Clear",
-		"_Log",
-	})
-	a.setContent(a.entries)
-}
-
-func (a *App) doInfo() {
-	if a.content != a.entries {
-		return
+func NewInfoPanel(a *App) *InfoPanel {
+	ipanel := &InfoPanel{
+		text:      topsl.NewTextArea(),
+		info:      nil,
+		titlebar:  a.titlebar,
+		keybar:    a.keybar,
+		statusbar: a.statusbar,
 	}
-	s := a.entries.getSelected()
+
+	return ipanel
+}
+
+func (i *InfoPanel) Draw() {
+
+	s := i.info
 	if s == nil {
 		return
 	}
-
-	lines := make([]string, 0, 5)
+	lines := make([]string, 0, 8)
+	d := time.Now().Sub(s.TimeStamp)
+	d -= d % time.Second
 	lines = append(lines, fmt.Sprintf("%13s %s", "Name:", s.Name))
 	lines = append(lines, fmt.Sprintf("%13s %s", "Description:",
 		s.Description))
 	lines = append(lines, fmt.Sprintf("%13s %s", "Status:", status(s)))
-	lines = append(lines, fmt.Sprintf("%13s %v", "Since:",
-		time.Now().Sub(s.TimeStamp)))
+	lines = append(lines, fmt.Sprintf("%13s %v (%v)", "Since:", d, s.TimeStamp))
 	lines = append(lines, fmt.Sprintf("%13s %s", "Detail:", s.Status))
 
 	l := fmt.Sprintf("%13s", "Provides:")
@@ -349,12 +343,120 @@ func (a *App) doInfo() {
 	}
 	lines = append(lines, l)
 
-	a.titlebar.SetCenter("", topsl.StyleTitle)
-	a.titlebar.SetCenter("Details for "+s.Name, topsl.StyleTitle)
-	a.statusbar.SetStatus("")
-	a.statusbar.SetNormal()
-	a.info.SetLines(lines)
+	i.titlebar.SetCenter("Details for "+s.Name, topsl.StyleTitle)
+	i.statusbar.SetStatus("")
+	if !s.Enabled {
+		i.statusbar.SetNormal()
+	} else if s.Failed {
+		i.statusbar.SetFail()
+	} else if s.Running {
+		i.statusbar.SetGood()
+	} else {
+		i.statusbar.SetWarn()
+	}
+
+	i.text.SetLines(lines)
+	i.keybar.SetKeys([]string{"_Quit"})
+
+	i.text.Draw()
+	i.text.EnableCursor(false)
+}
+
+func (i *InfoPanel) HandleEvent(e topsl.Event) bool {
+	return i.text.HandleEvent(e)
+}
+
+func (i *InfoPanel) SetView(view topsl.View) {
+	i.text.SetView(view)
+}
+
+func (i *InfoPanel) Resize() {
+	i.text.Resize()
+}
+
+func (i *InfoPanel) setInfo(s *rest.ServiceInfo) {
+	i.info = s
+	i.Draw()
+	return
+	lines := make([]string, 0, 8)
+	d := time.Now().Sub(s.TimeStamp)
+	d -= d % time.Second
+	lines = append(lines, fmt.Sprintf("%13s %s", "Name:", s.Name))
+	lines = append(lines, fmt.Sprintf("%13s %s", "Description:",
+		s.Description))
+	lines = append(lines, fmt.Sprintf("%13s %s", "Status:", status(s)))
+	lines = append(lines, fmt.Sprintf("%13s %v (%v)", "Since:", d, s.TimeStamp))
+	lines = append(lines, fmt.Sprintf("%13s %s", "Detail:", s.Status))
+
+	l := fmt.Sprintf("%13s", "Provides:")
+	for _, p := range s.Provides {
+		l = l + fmt.Sprintf(" %s", p)
+	}
+	lines = append(lines, l)
+
+	l = fmt.Sprintf("%13s", "Depends:")
+	for _, p := range s.Depends {
+		l = l + fmt.Sprintf(" %s", p)
+	}
+	lines = append(lines, l)
+
+	l = fmt.Sprintf("%13s", "Conflicts:")
+	for _, p := range s.Conflicts {
+		l = l + fmt.Sprintf("   %s", p)
+	}
+	lines = append(lines, l)
+
+	i.titlebar.SetCenter("Details for "+s.Name, topsl.StyleTitle)
+	i.statusbar.SetStatus("")
+	if !s.Enabled {
+		i.statusbar.SetNormal()
+	} else if s.Failed {
+		i.statusbar.SetFail()
+	} else if s.Running {
+		i.statusbar.SetGood()
+	} else {
+		i.statusbar.SetWarn()
+	}
+
+	i.text.SetLines(lines)
+	i.keybar.SetKeys([]string{"_Quit"})
+}
+
+func (a *App) setContent(w topsl.Widget) {
+	a.content = w
+	a.panel.SetContent(w)
+}
+
+func (a *App) doHelp() {
+	a.help.SetLines([]string{
+		"Insert help text here.",
+		"",
+		"This program is distributed under the Apache 2.0 License",
+		"Copyright 2015 The Govisor Authors",
+	})
+	a.titlebar.SetCenter("Help", topsl.StyleTitle)
 	a.keybar.SetKeys([]string{"_Quit"})
+	a.statusbar.SetNormal()
+	a.statusbar.SetStatus("")
+	a.setContent(a.help)
+}
+
+func (a *App) doEntries() {
+	a.titlebar.SetCenter(a.server, topsl.StyleTitle)
+	a.setContent(a.entries)
+	a.entries.update()
+}
+
+func (a *App) doInfo() {
+	if a.content != a.entries {
+		return
+	}
+	s := a.entries.getSelected()
+	if s == nil {
+		return
+	}
+
+	a.info.setInfo(s)
 	a.setContent(a.info)
 }
 
@@ -479,7 +581,6 @@ func (a *App) HandleEvent(ev topsl.Event) bool {
 
 func (a *App) Draw() {
 
-	a.entries.updateApp(a)
 	a.panel.Draw()
 }
 
@@ -496,15 +597,16 @@ func (a *App) SetView(view topsl.View) {
 func (a *App) kick() {
 	select {
 	case a.refresh <- true:
+	default:
 	}
 }
 
 func (a *App) refreshLoop() {
 	for {
+		a.client.Watch()
 		a.refreshInfos()
 		select {
-		case <-a.refresh:
-		case <-time.After(time.Second * 5):
+		default:
 		case <-a.closeq:
 			return
 		}
@@ -530,6 +632,7 @@ func (a *App) refreshInfos() {
 
 	topsl.AppLock()
 	a.entries.SetInfos(infos)
+	a.info.setInfo(a.entries.getSelected())
 	topsl.AppUnlock()
 	topsl.AppDraw()
 }
@@ -544,18 +647,19 @@ func (a *App) redrawLoop() {
 		topsl.AppDraw()
 	}
 }
+
 func NewApp(client *rest.Client, url string) *App {
 
 	app := &App{}
 	app.client = client
 	app.server = url
-	app.entries = NewEntries()
 	app.keybar = topsl.NewKeyBar(nil)
 	app.statusbar = topsl.NewStatusBar("")
 	app.titlebar = topsl.NewTitleBar(url)
-	app.info = topsl.NewTextArea()
+	app.info = NewInfoPanel(app)
 	app.help = topsl.NewTextArea()
 	app.log = topsl.NewTextArea()
+	app.entries = NewEntries(app)
 
 	app.titlebar.SetRight("Govisor 1.0", topsl.StyleStatus)
 	app.titlebar.SetCenter(url, topsl.StyleTitle)
