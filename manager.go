@@ -56,6 +56,15 @@ func (m *Manager) unlock() {
 	m.mx.Unlock()
 }
 
+func (m *Manager) wakeUp() {
+	// NB: If the lock is not held here, then there is a risk
+	// that the woken goroutines won't get see the updated
+	// serial number!!
+	for cv := range m.cvs {
+		cv.Broadcast()
+	}
+}
+
 // bumpSerial increments the serial and notifies watchers.  It returns
 // the new serial number, so that it can be stored in services.
 // Call with lock held.
@@ -63,12 +72,7 @@ func (m *Manager) bumpSerial() int64 {
 	m.updateTime = time.Now()
 	m.serial++
 	rv := m.serial
-	for cv := range m.cvs {
-		// NB: If the lock is not held here, then there is a risk
-		// that the woken goroutines won't get see the updated
-		// serial number!!
-		cv.Broadcast()
-	}
+	m.wakeUp()
 	return rv
 }
 

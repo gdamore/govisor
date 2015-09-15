@@ -15,7 +15,6 @@
 package rest
 
 import (
-	"sync"
 	"time"
 )
 
@@ -42,9 +41,7 @@ type ManagerInfo struct {
 	Serial     string    `json:"serial"`
 	CreateTime time.Time `json:"created"`
 	UpdateTime time.Time `json:"updated"`
-	cv         *sync.Cond
 	etag       string
-	url        string
 }
 
 type ServiceInfo struct {
@@ -59,9 +56,13 @@ type ServiceInfo struct {
 	Status      string    `json:"status"`
 	TimeStamp   time.Time `json:"tstamp"`
 	Serial      string    `json:"serial"`
-	cv          *sync.Cond
 	etag        string
-	url         string
+}
+
+type LogRecord struct {
+	Id   string    `json:"id"`
+	Time time.Time `json:"time"`
+	Text string    `json:"text"`
 }
 
 type Error struct {

@@ -87,28 +87,9 @@ type Service struct {
 	ratePeriod time.Duration
 	startTimes []time.Time
 	notify     func()
-	slog       *ServiceLog
+	slog       *Log
 	mlog       *MultiLogger
 	serial     int64
-}
-
-const maxLogRecords = 1000
-
-type ServiceLog struct {
-	Records    []string
-	NumRecords int
-}
-
-func (s *ServiceLog) Write(b []byte) (int, error) {
-	if s.Records == nil {
-		s.Records = make([]string, maxLogRecords)
-	}
-	str := strings.Trim(string(b), "\n")
-	for _, line := range strings.Split(str, "\n") {
-		s.Records[s.NumRecords%len(s.Records)] = line
-		s.NumRecords++
-	}
-	return len(b), nil
 }
 
 // The service name.  This takes either the form <base> or <base>:<variant>.
@@ -174,6 +155,10 @@ func (s *Service) WatchService(old int64, expire time.Duration) int64 {
 		time.Sleep(expire)
 	}
 	return s.serial
+}
+
+func (s *Service) WatchLog(old int64, expire time.Duration) int64 {
+	return s.slog.Watch(old, expire)
 }
 
 // Conflicts returns a list of strings or service names that
@@ -529,22 +514,12 @@ func (s *Service) GetProperty(n PropertyName) (interface{}, error) {
 	return s.prov.Property(n)
 }
 
-func (s *Service) GetLog() []string {
+func (s *Service) GetLog(lastid int64) ([]LogRecord, int64) {
 	if m := s.mgr; m != nil {
 		m.lock()
 		defer m.unlock()
 	}
-	recs := make([]string, 0, s.slog.NumRecords%len(s.slog.Records))
-	cur := s.slog.NumRecords
-	cnt := cur % len(s.slog.Records)
-	if cnt > cur {
-		cnt = cur
-	}
-	for i := cur - cnt; i < cnt; i++ {
-		recs = append(recs, s.slog.Records[i%len(s.slog.Records)])
-
-	}
-	return recs
+	return s.slog.GetRecords(lastid)
 }
 
 // setManager is called by the framework when the service is added to
@@ -833,8 +808,8 @@ func NewService(p Provider) *Service {
 	s.mlog = NewMultiLogger()
 	s.mlog.Logger().SetPrefix("[" + s.Name() + "] ")
 	s.prov.SetProperty(PropLogger, s.mlog.Logger())
-	s.slog = &ServiceLog{}
-	s.mlog.AddLogger(log.New(s.slog, "", log.LstdFlags))
+	s.slog = NewLog()
+	s.mlog.AddLogger(log.New(s.slog, "", 0))
 	p.SetProperty(PropNotify, s.doNotify)
 	return s
 }

@@ -48,6 +48,7 @@ import (
 
 var addr string = "http://127.0.0.1:8321"
 var auth string = ""
+var logfile = ""
 
 func usage() {
 	log.Fatalf("Usage: %s [-a <address>] [-u <user:pass>] <subcommand>",
@@ -67,12 +68,21 @@ func status(s *rest.ServiceInfo) string {
 	return "standby"
 }
 
+func formatDuration(d time.Duration) string {
+
+	sec := int((d % time.Minute) / time.Second)
+	min := int((d % time.Hour) / time.Minute)
+	hour := int(d / time.Hour)
+
+	return fmt.Sprintf("%d:%02d:%02d", hour, min, sec)
+}
+
 func showStatus(s *rest.ServiceInfo) {
 	d := time.Since(s.TimeStamp)
 	// for printing second resolution is sufficient
 	d -= d % time.Second
-	fmt.Printf("%10s %10s %10s %s\n", s.Name,
-		status(s), d.String(), s.Status)
+	fmt.Printf("%10s %10s  %10s    %s\n", s.Name,
+		status(s), formatDuration(d), s.Status)
 }
 
 type sorted []*rest.ServiceInfo
@@ -109,7 +119,17 @@ func sortInfos(items []*rest.ServiceInfo) {
 func main() {
 	flag.StringVar(&addr, "a", addr, "govisor address")
 	flag.StringVar(&auth, "u", auth, "user:pass authentication")
+	flag.StringVar(&logfile, "d", logfile, "debug log file")
 	flag.Parse()
+
+	var dlog *log.Logger
+	if logfile != "" {
+		f, e := os.Create(logfile)
+		if e == nil {
+			dlog = log.New(f, "DEBUG:", log.LstdFlags)
+			log.SetOutput(f)
+		}
+	}
 
 	client := rest.NewClient(nil, addr)
 	if auth != "" {
@@ -177,12 +197,13 @@ func main() {
 		if len(args) != 2 {
 			usage()
 		}
-		s, e := client.GetServiceLog(args[1])
+		loginfo, e := client.GetLog(args[1])
 		if e != nil {
 			log.Fatalf("Failed: %v", e)
 		}
-		for _, line := range s {
-			fmt.Println(line)
+		for _, line := range loginfo.Records {
+			fmt.Printf("%s %s\n",
+				line.Time.Format(time.StampMilli), line.Text)
 		}
 	case "info":
 		if len(args) != 2 {
@@ -239,6 +260,6 @@ func main() {
 			showStatus(info)
 		}
 	case "ui":
-		doUI(client, addr)
+		doUI(client, addr, dlog)
 	}
 }

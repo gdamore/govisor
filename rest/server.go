@@ -226,8 +226,23 @@ func (h *Handler) getLog(w http.ResponseWriter, r *http.Request) {
 	if svc, e := h.findService(name); e != nil {
 		h.writeError(w, e)
 	} else {
-		lines := svc.GetLog()
-		h.writeJson(w, lines)
+		h.checkPoll(r, svc.WatchLog)
+		recs, sn := svc.GetLog(0)
+		jrecs := make([]LogRecord, len(recs))
+		when := time.Now()
+		for i := range recs {
+			jrecs[i].Id = strconv.FormatInt(recs[i].Id, 16)
+			jrecs[i].Time = recs[i].Time
+			jrecs[i].Text = recs[i].Text
+			when = jrecs[i].Time
+		}
+		etag := "\"" + strconv.FormatInt(sn, 16) + "\""
+		if !h.condCheckGet(w, r, etag, when) {
+			return
+		}
+		w.Header().Set("Etag", etag)
+		w.Header().Set("Last-Modified", when.Format(http.TimeFormat))
+		h.writeJson(w, jrecs)
 	}
 }
 
