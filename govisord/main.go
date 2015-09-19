@@ -41,6 +41,7 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -48,12 +49,7 @@ import (
 	"github.com/gdamore/govisor/rest"
 )
 
-var addr string = "127.0.0.1:8321"
-var dir string = "."
-var name string = "govisord"
-var enable bool = true
-var passfile string = ""
-var genpass string = ""
+var addr string = "http://127.0.0.1:8321"
 
 type MyHandler struct {
 	h      *rest.Handler
@@ -113,25 +109,111 @@ func (h *MyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.h.ServeHTTP(w, r)
 }
 
+var logFile = ""
+
+func die(format string, v ...interface{}) {
+	if logFile != "" {
+		log.Printf(format, v...)
+	}
+	fmt.Printf(format+"\n", v...)
+	os.Exit(1)
+}
+
 func main() {
-	flag.StringVar(&addr, "a", addr, "listen address")
-	flag.StringVar(&dir, "d", dir, "manifest directory")
-	flag.StringVar(&name, "n", name, "govisor name")
-	flag.BoolVar(&enable, "e", enable, "enable all services")
-	flag.StringVar(&passfile, "p", passfile, "password file")
-	flag.StringVar(&genpass, "g", genpass, "generate password")
+	dir := "."
+	name := "govisord"
+	enable := true
+	passFile := ""
+	genpass := ""
+	certFile := ""
+	keyFile := ""
+	m := govisor.NewManager(name)
+
+	flag.StringVar(&certFile, "certfile", certFile, "certificate file (for TLS)")
+	flag.StringVar(&keyFile, "keyfile", keyFile, "key file (for TLS)")
+	flag.StringVar(&addr, "addr", addr, "listen address")
+	flag.StringVar(&dir, "dir", dir, "configuration directory")
+	flag.StringVar(&name, "name", name, "govisor name")
+	flag.BoolVar(&enable, "enable", enable, "enable all services")
+	flag.StringVar(&passFile, "passfile", passFile, "password file")
+	flag.StringVar(&genpass, "passwd", genpass, "generate password")
+	flag.StringVar(&logFile, "logfile", logFile, "log file")
 	flag.Parse()
 
-	m := govisor.NewManager(name)
-	m.StartMonitoring()
+	var lf *os.File
+	var e error
+	if logFile != "" {
+		lf, e = os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+		if e != nil {
+			die("Failed to open log file: %v", e)
+		}
+		log.SetOutput(lf)
+		m.SetLogger(log.New(lf, "", log.LstdFlags))
+	}
+
+	sigs := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
+	h := &MyHandler{
+		h:      rest.NewHandler(m),
+		name:   name,
+		auth:   false,
+		passwd: make(map[string]string),
+	}
+	if genpass != "" {
+		h.auth = true
+		rec := strings.SplitN(genpass, ":", 2)
+		if len(rec) != 2 {
+			die("Missing user:password")
+		}
+		enc, e := bcrypt.GenerateFromPassword([]byte(rec[1]), 0)
+		if e != nil {
+			die("bcrypt: %v", e)
+		}
+		h.passwd[rec[0]] = string(enc)
+		log.Printf("Encrypted password is '%s'", string(enc))
+	}
+	if passFile != "" {
+		if e := h.loadPasswdFile(passFile); e != nil {
+			die("Unable to load passwd file: %v", e)
+		}
+	} else if _, err := os.Stat(path.Join(dir, "passwd")); err == nil {
+		if e := h.loadPasswdFile(path.Join(dir, "passwd")); e != nil {
+			die("Unable to load passwd file: %v", e)
+		}
+	}
+
+	if certFile == "" {
+		certFile = path.Join(dir, "cert.pem")
+	}
+	if keyFile == "" {
+		keyFile = path.Join(dir, "key.pem")
+	}
+
+	go func() {
+		var e error
+		if strings.HasPrefix(addr, "https://") {
+			e = http.ListenAndServeTLS(addr[len("https://"):],
+				certFile, keyFile, h)
+		} else if strings.HasPrefix(addr, "http://") {
+			e = http.ListenAndServe(addr[len("http://"):], h)
+		} else {
+			e = http.ListenAndServe(addr, h)
+		}
+		if e != nil {
+			die("HTTP/HTTPS failed: %v", e)
+		}
+	}()
+
+	/* This sleep is long enough to verify that our HTTP service started */
+	time.Sleep(time.Millisecond * 100)
 
 	svcDir := path.Join(dir, "services")
-
 	if d, e := os.Open(svcDir); e != nil {
-		log.Fatalf("Failed to open services directory %s: %v",
-			svcDir, e)
+		die("Failed to open services directory %s: %v", svcDir, e)
 	} else if files, e := d.Readdirnames(-1); e != nil {
-		log.Fatalf("Failed to scan scan services: %v", e)
+		die("Failed to scan scan services: %v", e)
 	} else {
 		for _, f := range files {
 			fname := path.Join(svcDir, f)
@@ -151,48 +233,14 @@ func main() {
 			}
 		}
 	}
+
+	m.StartMonitoring()
 	if enable {
 		svcs, _, _ := m.Services()
 		for _, s := range svcs {
 			s.Enable()
 		}
 	}
-	sigs := make(chan os.Signal, 1)
-	done := make(chan bool, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-
-	h := &MyHandler{
-		h:      rest.NewHandler(m),
-		name:   name,
-		auth:   false,
-		passwd: make(map[string]string),
-	}
-	if genpass != "" {
-		h.auth = true
-		rec := strings.SplitN(genpass, ":", 2)
-		if len(rec) != 2 {
-			log.Fatalf("Missing user:password")
-		}
-		enc, e := bcrypt.GenerateFromPassword([]byte(rec[1]), 0)
-		if e != nil {
-			log.Fatalf("bcrypt: %v", e)
-		}
-		h.passwd[rec[0]] = string(enc)
-		log.Printf("Encrypted password is '%s'", string(enc))
-	}
-	if passfile != "" {
-		if e := h.loadPasswdFile(passfile); e != nil {
-			log.Fatalf("Unable to load passwd file: %v", e)
-		}
-	} else if _, err := os.Stat(path.Join(dir, "passwd")); err == nil {
-		if e := h.loadPasswdFile(path.Join(dir, "passwd")); e != nil {
-			log.Fatalf("Unable to load passwd file: %v", e)
-		}
-	}
-
-	go func() {
-		log.Fatal(http.ListenAndServe(addr, h))
-	}()
 
 	// Set up a handler, so that we shutdown cleanly if possible.
 	go func() {

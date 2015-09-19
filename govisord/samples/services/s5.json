@@ -1,0 +1,7 @@
+{
+	"name": "s5:incompat",
+	"description": "s5 conflicts with s4",
+	"conflicts": [ "s4" ],
+	"command": [ "sleep", "3600" ]
+}
+

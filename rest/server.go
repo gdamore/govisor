@@ -176,7 +176,11 @@ func (h *Handler) enableService(w http.ResponseWriter, r *http.Request) {
 	if svc, e := h.findService(name); e != nil {
 		h.writeError(w, e)
 	} else if err := svc.Enable(); err != nil {
-		e = &Error{http.StatusBadRequest, err.Error()}
+		if e == govisor.ErrConflict {
+			e = &Error{http.StatusConflict, err.Error()}
+		} else {
+			e = &Error{http.StatusBadRequest, err.Error()}
+		}
 		h.writeError(w, e)
 	} else {
 		h.writeJson(w, ok)

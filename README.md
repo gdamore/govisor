@@ -31,10 +31,3 @@ Govisor is designed for embedding as well.  You can embed the manager into
 your own application.  The REST API implementation provides a http.Handler,
 so you can also wrap or embed the API with other web services.
 
-TODO
-----
-
-(See the github issues for the formal list.)
-
-* client API
-* termbox UI client

@@ -249,10 +249,13 @@ func (m *MainPanel) update() {
 	// preserve selected item
 	if sel := m.selected; sel != nil {
 		m.selected = nil
+		cury := 0
 		for _, item := range m.items {
 			if item.Name == sel.Name {
 				m.selected = item
+				m.cury = cury
 			}
+			cury++
 		}
 	}
 	if err != nil {
@@ -277,7 +280,7 @@ func (m *MainPanel) update() {
 	for _, info := range items {
 		d := time.Since(info.TimeStamp)
 		d -= d % time.Second
-		line := fmt.Sprintf("%-20s %-10s %10s   %10s",
+		line := fmt.Sprintf("%-20s %-10s %10s   %-10s",
 			info.Name, status(info), formatDuration(d), info.Status)
 
 		if len(line) > m.width {

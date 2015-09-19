@@ -310,13 +310,23 @@ func (m *Manager) notify(s *Service) {
 	}
 }
 
+func (m *Manager) logf(format string, v ...interface{}) {
+	if m.logger != nil {
+		m.logger.Printf(format, v...)
+	} else {
+		log.Printf(format, v...)
+	}
+}
+
 func (m *Manager) StopMonitoring() {
 	m.lock()
 	m.monitoring = false
 	m.unlock()
+	m.logf("*** Govisor stopping monitoring: %s ***", m.name)
 }
 
 func (m *Manager) StartMonitoring() {
+	m.logf("*** Govisor starting monitoring: %s ***", m.name)
 	m.lock()
 	m.monitoring = true
 	m.unlock()
@@ -334,6 +344,7 @@ func (m *Manager) Shutdown() {
 		s.delManager()
 	}
 	m.unlock()
+	m.logf("*** Govisor shut down: %s ***", m.name)
 }
 
 func NewManager(name string) *Manager {

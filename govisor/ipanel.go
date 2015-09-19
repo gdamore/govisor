@@ -188,7 +188,7 @@ func (i *InfoPanel) update() {
 
 	l = fmt.Sprintf("%13s", "Conflicts:")
 	for _, p := range s.Conflicts {
-		l = l + fmt.Sprintf("   %s", p)
+		l = l + fmt.Sprintf(" %s", p)
 	}
 	lines = append(lines, l)
 

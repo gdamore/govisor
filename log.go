@@ -97,14 +97,22 @@ func (log *Log) GetRecords(last int64) ([]LogRecord, int64) {
 		log.unlock()
 		return nil, last
 	}
-	recs := make([]LogRecord, 0, log.numRecords%log.maxRecords)
+	var recs []LogRecord
+	cnt := log.numRecords
 	cur := log.numRecords
-	cnt := cur % log.maxRecords
+	if log.numRecords > log.maxRecords {
+		recs = make([]LogRecord, 0, log.maxRecords)
+		cnt = log.maxRecords
+	} else {
+		recs = make([]LogRecord, 0, log.numRecords)
+	}
 	if cnt > cur {
 		cnt = cur
 	}
-	for i := cur - cnt; i < cnt; i++ {
-		recs = append(recs, log.records[i%log.maxRecords])
+	index := cur - cnt
+	for j := 0; j < cnt; j++ {
+		recs = append(recs, log.records[index%log.maxRecords])
+		index++
 	}
 	id := log.id
 	log.unlock()

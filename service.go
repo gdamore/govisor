@@ -74,6 +74,7 @@ type Service struct {
 	failed     bool
 	restart    bool
 	checking   bool
+	healthy    bool
 	err        error
 	parents    map[string]map[*Service]bool
 	children   map[*Service]bool
@@ -227,11 +228,14 @@ func (s *Service) Enable() error {
 		if c.enabled {
 			s.logf("Cannot enable %s: conflicts with %s",
 				s.Name(), c.Name())
+			s.reason = "Disabled due to conflict"
+			s.serial = s.mgr.bumpSerial()
+			s.stamp = time.Now()
 			return ErrConflict
 		}
 	}
 	s.serial = s.mgr.bumpSerial()
-	s.reason = "Waiting to start"
+	s.reason = "Enabled"
 	s.stamp = time.Now()
 	s.logf("Enabling service %s", s.Name())
 	s.enabled = true
@@ -250,18 +254,18 @@ func (s *Service) Disable() error {
 	s.mgr.lock()
 	defer s.mgr.unlock()
 
-	if !s.enabled {
+	if !s.enabled && s.reason == "Disabled" {
 		return nil
 	}
 
 	s.serial = s.mgr.bumpSerial()
 	s.logf("Disabling service %s", s.Name())
 	s.stamp = time.Now()
-	s.reason = "Disabled service"
+	s.reason = "Disabled"
 	s.enabled = false
 	s.failed = false
 	s.err = nil
-	s.stopRecurse("Disabled service")
+	s.stopRecurse("Disabled")
 	return nil
 }
 
@@ -282,15 +286,15 @@ func (s *Service) Restart() error {
 	s.serial = s.mgr.bumpSerial()
 	s.logf("Restarting service %s", s.Name())
 	s.enabled = false
-	s.stopRecurse("Restarted service")
+	s.stopRecurse("Stopping for restart")
 
 	s.stamp = time.Now()
-	s.reason = "Restarted service"
+	s.reason = "Restarting"
 	s.starts = 0
 	s.failed = false
 	s.err = nil
 	s.enabled = true
-	s.startRecurse("Restarted service")
+	s.startRecurse("Restarting")
 	return nil
 }
 
@@ -637,13 +641,13 @@ func (s *Service) startRecurse(detail string) {
 	s.serial = s.mgr.bumpSerial()
 	if e := s.prov.Start(); e != nil {
 		s.logf("Failed to start %s: %v", s.Name(), e)
-		s.reason = "Failed to start:" + e.Error()
+		s.reason = "Failed start:" + e.Error()
 		s.stamp = time.Now()
 		s.err = e
 		s.failed = true
 		return
 	}
-	s.reason = "Started: " + detail
+	s.reason = "Started"
 	s.stamp = time.Now()
 	s.logf("Started %s: %s", s.Name(), detail)
 	s.running = true
@@ -662,11 +666,11 @@ func (s *Service) stopRecurse(detail string) {
 		if child.canRun() {
 			continue
 		}
-		child.stopRecurse("Dependency stopped")
+		child.stopRecurse("Unmet dependency")
 	}
 	s.serial = s.mgr.bumpSerial()
 	s.prov.Stop()
-	s.reason = "Stopped: " + detail
+	s.reason = detail
 	s.stamp = time.Now()
 	s.logf("Stopped %s: %s", s.Name(), detail)
 
@@ -687,6 +691,11 @@ func (s *Service) canRun() bool {
 			}
 		}
 		if !sat {
+			if s.reason != "Unmet dependency" {
+				s.reason = "Unmet dependency"
+				s.serial = s.mgr.bumpSerial()
+				s.stamp = time.Now()
+			}
 			return false
 		}
 	}
@@ -715,6 +724,12 @@ func (s *Service) checkService() error {
 		s.err = e
 		s.checking = false
 		return e
+	}
+	if s.reason != "Healthy" {
+		s.serial = s.mgr.bumpSerial()
+		s.reason = "Healthy"
+		s.logf("Service healthy")
+		s.stamp = time.Now()
 	}
 	s.checking = false
 	return nil

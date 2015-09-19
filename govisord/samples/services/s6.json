@@ -1,0 +1,7 @@
+{
+	"name": "s6:exit",
+	"description": "exits, and is fail on exit",
+	"failOnExit": true,
+	"command": [ "echo", "bailing cleanly" ]
+}
+

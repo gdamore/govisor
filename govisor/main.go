@@ -35,24 +35,28 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/gdamore/govisor/rest"
 )
 
 var addr string = "http://127.0.0.1:8321"
-var auth string = ""
-var logfile = ""
 
 func usage() {
-	log.Fatalf("Usage: %s [-a <address>] [-u <user:pass>] <subcommand>",
-		os.Args[0])
+	fmt.Fprintf(os.Stderr,
+		"Usage: %s [flags] <subcommand> [args]", os.Args[0])
+	os.Exit(1)
 }
 
 func status(s *rest.ServiceInfo) string {
@@ -81,7 +85,7 @@ func showStatus(s *rest.ServiceInfo) {
 	d := time.Since(s.TimeStamp)
 	// for printing second resolution is sufficient
 	d -= d % time.Second
-	fmt.Printf("%10s %10s  %10s    %s\n", s.Name,
+	fmt.Printf("%-20s %-10s  %10s    %s\n", s.Name,
 		status(s), formatDuration(d), s.Status)
 }
 
@@ -116,10 +120,54 @@ func sortInfos(items []*rest.ServiceInfo) {
 	sort.Sort(sorted(items))
 }
 
+func loadCertPath(roots *x509.CertPool, dirname string) error {
+	return filepath.Walk(dirname,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				if err := loadCertFile(roots, path); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+}
+
+func loadCertFile(roots *x509.CertPool, fname string) error {
+	data, err := ioutil.ReadFile(fname)
+	if err == nil {
+		roots.AppendCertsFromPEM(data)
+	}
+	return err
+}
+
+func fatal(f string, e error) {
+	msg := e.Error()
+	if len(msg) > 4 && msg[0] == '4' {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", f, msg[4:])
+	} else {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", f, msg)
+	}
+	os.Exit(1)
+}
+
 func main() {
-	flag.StringVar(&addr, "a", addr, "govisor address")
-	flag.StringVar(&auth, "u", auth, "user:pass authentication")
-	flag.StringVar(&logfile, "d", logfile, "debug log file")
+	user := ""
+	pass := ""
+	logfile := ""
+	cafile := ""
+	capath := ""
+	insecure := false
+
+	flag.StringVar(&addr, "addr", addr, "govisor address")
+	flag.StringVar(&user, "user", user, "user name for authentication")
+	flag.StringVar(&pass, "pass", pass, "password for authentication")
+	flag.StringVar(&cafile, "cacert", cafile, "CA certificate file")
+	flag.StringVar(&capath, "capath", capath, "CA certificates directory")
+	flag.StringVar(&logfile, "debuglog", logfile, "debug log file")
+	flag.BoolVar(&insecure, "insecure", insecure, "allow insecure TLS connections")
 	flag.Parse()
 
 	var dlog *log.Logger
@@ -131,13 +179,38 @@ func main() {
 		}
 	}
 
-	client := rest.NewClient(nil, addr)
-	if auth != "" {
-		a := strings.SplitN(auth, ":", 2)
-		if len(a) != 2 {
-			log.Fatalf("Bad user:pass supplied")
+	roots := x509.NewCertPool()
+	if cafile == "" && capath == "" {
+		roots = nil
+	} else {
+		if cafile != "" {
+			if e := loadCertFile(roots, cafile); e != nil {
+				fatal("Unable to load cert file", e)
+			}
 		}
-		client.SetAuth(a[0], a[1])
+		if capath != "" {
+			if e := loadCertPath(roots, capath); e != nil {
+				fatal("Unable to load cert path", e)
+			}
+		}
+	}
+
+	u, e := url.Parse(addr)
+	if e != nil {
+		fatal("Bad address", e)
+	}
+	tcfg := &tls.Config{
+		RootCAs:            roots,
+		ServerName:         u.Host,
+		InsecureSkipVerify: insecure,
+	}
+	tran := &http.Transport{
+		TLSClientConfig: tcfg,
+	}
+
+	client := rest.NewClient(tran, addr)
+	if user != "" || pass != "" {
+		client.SetAuth(user, pass)
 	}
 
 	args := flag.Args()
@@ -152,7 +225,7 @@ func main() {
 		}
 		s, e := client.Services()
 		if e != nil {
-			log.Fatalf("Failed: %v", e)
+			fatal("Error", e)
 		}
 		sort.Strings(s)
 		for _, name := range s {
@@ -164,7 +237,7 @@ func main() {
 		}
 		e := client.EnableService(args[1])
 		if e != nil {
-			log.Fatalf("Failed: %v", e)
+			fatal("Error", e)
 		}
 	case "disable":
 		if len(args) != 2 {
@@ -172,7 +245,7 @@ func main() {
 		}
 		e := client.DisableService(args[1])
 		if e != nil {
-			log.Fatalf("Failed: %v", e)
+			fatal("Error", e)
 		}
 
 	case "restart":
@@ -181,7 +254,7 @@ func main() {
 		}
 		e := client.RestartService(args[1])
 		if e != nil {
-			log.Fatalf("Failed: %v", e)
+			fatal("Error", e)
 		}
 
 	case "clear":
@@ -190,7 +263,7 @@ func main() {
 		}
 		e := client.ClearService(args[1])
 		if e != nil {
-			log.Fatalf("Failed: %v", e)
+			fatal("Error", e)
 		}
 
 	case "log":
@@ -199,7 +272,7 @@ func main() {
 		}
 		loginfo, e := client.GetLog(args[1])
 		if e != nil {
-			log.Fatalf("Failed: %v", e)
+			fatal("Error", e)
 		}
 		for _, line := range loginfo.Records {
 			fmt.Printf("%s %s\n",
@@ -211,7 +284,7 @@ func main() {
 		}
 		s, e := client.GetService(args[1])
 		if e != nil {
-			log.Fatalf("Failed: %v", e)
+			fatal("Failed", e)
 		}
 		fmt.Printf("Name:      %s\n", s.Name)
 		fmt.Printf("Desc:      %s\n", s.Description)
@@ -239,7 +312,7 @@ func main() {
 		if len(names) == 0 {
 			names, e = client.Services()
 			if e != nil {
-				log.Fatalf("Failed: %v", e)
+				fatal("Error", e)
 			}
 		}
 		if len(names) == 0 {
@@ -252,7 +325,7 @@ func main() {
 			if e == nil {
 				infos = append(infos, info)
 			} else {
-				log.Printf("Failed: %v", e)
+				fatal("Error", e)
 			}
 		}
 		sortInfos(infos)

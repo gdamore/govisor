@@ -127,7 +127,7 @@ func (c *Client) pollServices(ctx context.Context, secs int) ([]string, error) {
 
 // Services returns a list of service names known to the implementation
 func (c *Client) Services() ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	return c.pollServices(ctx, 0)
 }
@@ -169,7 +169,7 @@ func (c *Client) pollService(ctx context.Context, name string, secs int, last *S
 }
 
 func (c *Client) GetService(name string) (*ServiceInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	return c.pollService(ctx, name, 0, nil)
 }
@@ -217,19 +217,35 @@ func (c *Client) poll(ctx context.Context, url string, etag string, wait int, v 
 	case <-ctx.Done():
 		c.transport.CancelRequest(req)
 		<-ch // wait for the Do to finish (or be canceled)
-		return "", ctx.Err()
+		e = ctx.Err()
 	case cr := <-ch:
 		res = cr.r
 		e = cr.e
 	}
-	if e != nil {
+	switch e {
+	case nil:
+	case context.DeadlineExceeded:
+		return "", &Error{
+			Code:    http.StatusRequestTimeout,
+			Message: "Request timed out",
+		}
+	default:
 		return "", e
 	}
+
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotModified {
 		return "", nil
 	}
 	if res.StatusCode != http.StatusOK {
+		err := &Error{Code: res.StatusCode, Message: res.Status}
+
+		if ebody, e := ioutil.ReadAll(res.Body); e == nil {
+			if e := json.Unmarshal(ebody, err); e == nil {
+				return "", err
+			}
+		}
+
 		return "", &Error{Code: res.StatusCode, Message: res.Status}
 	}
 	body, e := ioutil.ReadAll(res.Body)
@@ -255,8 +271,16 @@ func (c *Client) post(url string) error {
 	if e != nil {
 		return e
 	}
-	res.Body.Close()
+	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		err := &Error{Code: res.StatusCode, Message: res.Status}
+
+		if ebody, e := ioutil.ReadAll(res.Body); e == nil {
+			if e := json.Unmarshal(ebody, err); e == nil {
+				return err
+			}
+		}
+
 		return &Error{Code: res.StatusCode, Message: res.Status}
 	}
 	return nil
@@ -339,7 +363,7 @@ func (c *Client) WatchLog(ctx context.Context, name string, last *LogInfo) (*Log
 }
 
 func (c *Client) GetLog(name string) (*LogInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	return c.pollLog(ctx, name, 0, nil)
 }
@@ -362,6 +386,7 @@ func NewClient(t *http.Transport, baseURI string) *Client {
 		base:      baseURI,
 		client:    &http.Client{Transport: t},
 		logs:      make(map[string]*LogInfo),
+		services:  make(map[string]*ServiceInfo),
 	}
 	return c
 }
