@@ -7,15 +7,12 @@
 [![Gitter](https://img.shields.io/badge/gitter-join-brightgreen.svg)](https://gitter.im/gdamore/govisor)
 [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/gdamore/govisor)
 
-> _Govisor is a work in progress (Alpha).
-> Please use with caution; at this
-> time it is not suitable for production use._
-
-package govisor is an framework for managing services.  It supports dependency
+package govisor is a framework for managing services.  It supports dependency
 graphs of services, and handles starting, stopping, and restarting services
 as necessary.  It also deals with failures, and supports self-healing, and
 has some advanced logging capabilities.  It also offers a REST API for
-managing your services.
+managing your services, as well as a nicer client API, and a snazzy little
+terminal application to monitor the services.
 
 There is a daemon (govisord) that can be used to manage a tree of process in
 a manner similar to init or SMF or systemd.  However, it is designed to be
@@ -31,3 +28,5 @@ Govisor is designed for embedding as well.  You can embed the manager into
 your own application.  The REST API implementation provides a http.Handler,
 so you can also wrap or embed the API with other web services.
 
+The govisor client application, "govisor", is in the govisor/ directory.
+It has a number of options, try it with -h to see them.
