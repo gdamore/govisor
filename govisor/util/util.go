@@ -75,5 +75,3 @@ func (s sorted) Less(i, j int) bool {
 func SortServices(items []*rest.ServiceInfo) {
 	sort.Sort(sorted(items))
 }
-
-
