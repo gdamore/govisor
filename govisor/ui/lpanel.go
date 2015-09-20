@@ -145,7 +145,7 @@ func (p *LogPanel) update() {
 		p.titlebar.SetCenter("Log for " + p.name)
 	}
 
-	if svcinfo == nil || loginfo == nil {
+	if (svcinfo == nil && p.name != "") || loginfo == nil {
 		e := e2
 		if e == nil {
 			e = e1
@@ -164,14 +164,16 @@ func (p *LogPanel) update() {
 	}
 
 	p.statusbar.SetStatus("")
-	if !svcinfo.Enabled {
-		p.statusbar.SetNormal()
-	} else if svcinfo.Failed {
-		p.statusbar.SetFail()
-	} else if svcinfo.Running {
-		p.statusbar.SetGood()
-	} else {
-		p.statusbar.SetWarn()
+	if svcinfo != nil {
+		if !svcinfo.Enabled {
+			p.statusbar.SetNormal()
+		} else if svcinfo.Failed {
+			p.statusbar.SetFail()
+		} else if svcinfo.Running {
+			p.statusbar.SetGood()
+		} else {
+			p.statusbar.SetWarn()
+		}
 	}
 
 	lines := make([]string, 0, len(loginfo.Records))
@@ -183,14 +185,16 @@ func (p *LogPanel) update() {
 	p.text.SetLines(lines)
 
 	words = append(words, "[I] Info")
-	if !svcinfo.Enabled {
-		words = append(words, "[E] Enable")
-	} else {
-		words = append(words, "[D] Disable")
-		if svcinfo.Failed {
-			words = append(words, "[C] Clear")
+	if svcinfo != nil {
+		if !svcinfo.Enabled {
+			words = append(words, "[E] Enable")
+		} else {
+			words = append(words, "[D] Disable")
+			if svcinfo.Failed {
+				words = append(words, "[C] Clear")
+			}
+			words = append(words, "[R] Restart")
 		}
-		words = append(words, "[R] Restart")
 	}
 	p.keybar.SetKeys(words)
 }

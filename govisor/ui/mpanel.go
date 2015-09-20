@@ -147,6 +147,9 @@ func (m *MainPanel) HandleEvent(ev topsl.Event) bool {
 			if m.selected != nil {
 				m.app.ShowLog(m.selected.Name)
 				return true
+			} else {
+				m.app.ShowLog("")
+				return true
 			}
 		case 'E', 'e':
 			if m.selected != nil && !m.selected.Enabled {
@@ -368,6 +371,8 @@ func (m *MainPanel) update() {
 			}
 			words = append(words, "[R] Restart")
 		}
+	} else {
+		words = append(words, "[L] Log")
 	}
 	m.keybar.SetKeys(words)
 }

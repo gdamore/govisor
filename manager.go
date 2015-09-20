@@ -18,7 +18,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path"
 	"runtime"
 	"sync"
 	"time"
@@ -29,6 +28,8 @@ type Manager struct {
 	name       string
 	baseDir    string
 	logger     *log.Logger
+	log        *Log
+	mlog       *MultiLogger
 	writer     io.Writer
 	cleanup    bool
 	monitoring bool
@@ -239,32 +240,16 @@ func (m *Manager) setBaseDir() {
 // SetLogger is used to establish a logger.  It overrides the default, so it
 // shouldn't be used unless you want to control all logging.
 func (m *Manager) SetLogger(l *log.Logger) {
+	if m.logger != nil {
+		m.mlog.DelLogger(m.logger)
+	}
 	m.logger = l
+	m.mlog.AddLogger(l)
 }
 
 func (m *Manager) getLogger(s *Service) *log.Logger {
 
-	if m.logger != nil {
-		return m.logger
-	}
-	// Default logger
-	if len(m.baseDir) == 0 {
-		return log.New(os.Stderr, "", 0)
-	}
-
-	if runtime.GOOS == "windows" {
-		// XXX: this needs to generate a proper Windows service log
-		return log.New(os.Stderr, "", 0)
-	}
-
-	// XXX: service specific file names?
-	f := path.Join(m.baseDir, m.Name(), s.Name()+".log")
-
-	w, e := os.OpenFile(f, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-	if e != nil {
-		return log.New(os.Stderr, "", log.LstdFlags)
-	}
-	return log.New(w, "", log.LstdFlags)
+	return log.New(m.mlog, "", 0)
 }
 
 func (m *Manager) monitor() {
@@ -347,6 +332,16 @@ func (m *Manager) Shutdown() {
 	m.logf("*** Govisor shut down: %s ***", m.name)
 }
 
+func (m *Manager) GetLog(lastid int64) ([]LogRecord, int64) {
+	m.lock()
+	defer m.unlock()
+	return m.log.GetRecords(lastid)
+}
+
+func (m *Manager) WatchLog(old int64, expire time.Duration) int64 {
+	return m.log.Watch(old, expire)
+}
+
 func NewManager(name string) *Manager {
 	if name == "" {
 		name = "govisor"
@@ -361,6 +356,10 @@ func NewManager(name string) *Manager {
 	m.cvs = make(map[*sync.Cond]bool)
 	m.createTime = time.Now()
 	m.updateTime = m.createTime
+	m.mlog = NewMultiLogger()
+	m.log = NewLog()
+	m.mlog.AddLogger(log.New(m.log, "", 0))
+	m.logger = log.New(os.Stderr, "", 0)
 	m.setBaseDir()
 	go m.monitor()
 	return m

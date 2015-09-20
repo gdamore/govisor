@@ -215,10 +215,15 @@ func main() {
 		}
 
 	case "log":
-		if len(args) != 2 {
+		loginfo := &rest.LogInfo{}
+		switch len(args) {
+		case 0:
 			usage()
+		case 1:
+			loginfo, e = client.GetLog("")
+		case 2:
+			loginfo, e = client.GetLog(args[1])
 		}
-		loginfo, e := client.GetLog(args[1])
 		if e != nil {
 			fatal("Error", e)
 		}

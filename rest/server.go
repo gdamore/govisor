@@ -250,6 +250,27 @@ func (h *Handler) getLog(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) getManagerLog(w http.ResponseWriter, r *http.Request) {
+	m := h.m
+	h.checkPoll(r, m.WatchLog)
+	recs, sn := m.GetLog(0)
+	jrecs := make([]LogRecord, len(recs))
+	when := time.Now()
+	for i := range recs {
+		jrecs[i].Id = strconv.FormatInt(recs[i].Id, 16)
+		jrecs[i].Time = recs[i].Time
+		jrecs[i].Text = recs[i].Text
+		when = jrecs[i].Time
+	}
+	etag := "\"" + strconv.FormatInt(sn, 16) + "\""
+	if !h.condCheckGet(w, r, etag, when) {
+		return
+	}
+	w.Header().Set("Etag", etag)
+	w.Header().Set("Last-Modified", when.Format(http.TimeFormat))
+	h.writeJson(w, jrecs)
+}
+
 func (h *Handler) getManager(w http.ResponseWriter, r *http.Request) {
 	h.checkPoll(r, h.m.WatchSerial)
 	info := h.m.GetInfo()
@@ -278,6 +299,7 @@ func NewHandler(m *govisor.Manager) *Handler {
 	r := mux.NewRouter()
 	h := &Handler{m: m, r: r}
 	r.HandleFunc("/", h.getManager).Methods("GET")
+	r.HandleFunc("/log", h.getManagerLog).Methods("GET")
 	r.HandleFunc("/services", h.listServices).Methods("GET")
 	r.HandleFunc("/services/{service}", h.getService).Methods("GET")
 	r.HandleFunc("/services/{service}/enable", h.enableService).Methods("POST")
