@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	mimeJson = "application/json; charset=UTF-8"
+	MimeJson = "application/json; charset=UTF-8"
 )
 
 const (

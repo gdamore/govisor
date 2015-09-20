@@ -46,13 +46,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gdamore/govisor"
-	"github.com/gdamore/govisor/rest"
+	"github.com/gdamore/govisor/server"
 )
 
 var addr string = "http://127.0.0.1:8321"
 
 type MyHandler struct {
-	h      *rest.Handler
+	h      *server.Handler
 	auth   bool
 	passwd map[string]string
 	name   string
@@ -156,7 +156,7 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	h := &MyHandler{
-		h:      rest.NewHandler(m),
+		h:      server.NewHandler(m),
 		name:   name,
 		auth:   false,
 		passwd: make(map[string]string),
