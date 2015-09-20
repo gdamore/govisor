@@ -12,15 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package ui
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/gdamore/govisor/rest"
 	"github.com/gdamore/topsl"
+
+	"github.com/gdamore/govisor/govisor/util"
+	"github.com/gdamore/govisor/rest"
 )
+
+type sorted []*rest.ServiceInfo
+
+func (s sorted) Swap(i, j int) {
+        s[i], s[j] = s[j], s[i]
+}
+
+func (s sorted) Len() int {
+        return len(s)
+}
+
+func (s sorted) Less(i, j int) bool {
+        a := s[i]
+        b := s[j]
+
+        if a.Failed != b.Failed {
+                // put failed items at front
+                return a.Failed
+        }
+        if a.Enabled != b.Enabled {
+                // enabled in front of non-enabled items
+                return a.Enabled
+        }
+        // We don't worry about suspended items vs. running -- no clear order
+        // there.  We just sort based on name
+        return a.Name < b.Name
+}
 
 // MainPanel implements a topsl.Widget as a topsl.Panel, but provides the data
 // model and handling for the content area, using data loaded from a Govisor
@@ -281,7 +310,8 @@ func (m *MainPanel) update() {
 		d := time.Since(info.TimeStamp)
 		d -= d % time.Second
 		line := fmt.Sprintf("%-20s %-10s %10s   %-10s",
-			info.Name, status(info), formatDuration(d), info.Status)
+			info.Name, util.Status(info), util.FormatDuration(d),
+			info.Status)
 
 		if len(line) > m.width {
 			m.width = len(line)

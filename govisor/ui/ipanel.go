@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package ui
 
 import (
 	"fmt"
 
-	"github.com/gdamore/govisor/rest"
 	"github.com/gdamore/topsl"
+
+	"github.com/gdamore/govisor/govisor/util"
+	"github.com/gdamore/govisor/rest"
 )
 
 type InfoPanel struct {
@@ -170,7 +172,7 @@ func (i *InfoPanel) update() {
 	lines = append(lines, fmt.Sprintf("%13s %s", "Name:", s.Name))
 	lines = append(lines, fmt.Sprintf("%13s %s", "Description:",
 		s.Description))
-	lines = append(lines, fmt.Sprintf("%13s %s", "Status:", status(s)))
+	lines = append(lines, fmt.Sprintf("%13s %s", "Status:", util.Status(s)))
 	lines = append(lines, fmt.Sprintf("%13s %v", "Since:", s.TimeStamp))
 	lines = append(lines, fmt.Sprintf("%13s %s", "Detail:", s.Status))
 
