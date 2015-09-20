@@ -1,5 +1,3 @@
-// +build darwin freebsd linux netbsd openbsd windows
-
 // Copyright 2015 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,11 +24,14 @@ import (
 	"github.com/gdamore/govisor/rest"
 )
 
-func doUI(client *rest.Client, url string, logger *log.Logger) {
+func doUI(client *rest.Client, url string, logger *log.Logger) error {
 	app := ui.NewApp(client, url)
 	app.SetLogger(logger)
-	app.Logf("Starting up user interface")
 
+	if e := topsl.AppInit(); e != nil {
+		return e
+	}
+	app.Logf("Starting up user interface")
 	topsl.AppInit()
 	topsl.SetApplication(app)
 	app.ShowMain()
@@ -42,7 +43,7 @@ func doUI(client *rest.Client, url string, logger *log.Logger) {
 		}
 	}()
 	topsl.RunApplication()
-
+	return nil
 }
 
 /*
