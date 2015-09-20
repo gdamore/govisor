@@ -27,28 +27,28 @@ import (
 type sorted []*rest.ServiceInfo
 
 func (s sorted) Swap(i, j int) {
-        s[i], s[j] = s[j], s[i]
+	s[i], s[j] = s[j], s[i]
 }
 
 func (s sorted) Len() int {
-        return len(s)
+	return len(s)
 }
 
 func (s sorted) Less(i, j int) bool {
-        a := s[i]
-        b := s[j]
+	a := s[i]
+	b := s[j]
 
-        if a.Failed != b.Failed {
-                // put failed items at front
-                return a.Failed
-        }
-        if a.Enabled != b.Enabled {
-                // enabled in front of non-enabled items
-                return a.Enabled
-        }
-        // We don't worry about suspended items vs. running -- no clear order
-        // there.  We just sort based on name
-        return a.Name < b.Name
+	if a.Failed != b.Failed {
+		// put failed items at front
+		return a.Failed
+	}
+	if a.Enabled != b.Enabled {
+		// enabled in front of non-enabled items
+		return a.Enabled
+	}
+	// We don't worry about suspended items vs. running -- no clear order
+	// there.  We just sort based on name
+	return a.Name < b.Name
 }
 
 // MainPanel implements a topsl.Widget as a topsl.Panel, but provides the data

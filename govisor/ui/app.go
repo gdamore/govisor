@@ -25,8 +25,8 @@ import (
 
 	"github.com/gdamore/topsl"
 
-	"github.com/gdamore/govisor/rest"
 	"github.com/gdamore/govisor/govisor/util"
+	"github.com/gdamore/govisor/rest"
 )
 
 type App struct {

@@ -48,8 +48,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/gdamore/govisor/rest"
 	"github.com/gdamore/govisor/govisor/util"
+	"github.com/gdamore/govisor/rest"
 )
 
 var addr string = "http://127.0.0.1:8321"
