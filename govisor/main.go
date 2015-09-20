@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/gdamore/govisor/rest"
+	"github.com/gdamore/govisor/govisor/util"
 )
 
 var addr string = "http://127.0.0.1:8321"
@@ -59,65 +60,12 @@ func usage() {
 	os.Exit(1)
 }
 
-func status(s *rest.ServiceInfo) string {
-	if !s.Enabled {
-		return "disabled"
-	}
-	if s.Failed {
-		return "failed"
-	}
-	if s.Running {
-		return "running"
-	}
-	return "standby"
-}
-
-func formatDuration(d time.Duration) string {
-
-	sec := int((d % time.Minute) / time.Second)
-	min := int((d % time.Hour) / time.Minute)
-	hour := int(d / time.Hour)
-
-	return fmt.Sprintf("%d:%02d:%02d", hour, min, sec)
-}
-
 func showStatus(s *rest.ServiceInfo) {
 	d := time.Since(s.TimeStamp)
 	// for printing second resolution is sufficient
 	d -= d % time.Second
 	fmt.Printf("%-20s %-10s  %10s    %s\n", s.Name,
-		status(s), formatDuration(d), s.Status)
-}
-
-type sorted []*rest.ServiceInfo
-
-func (s sorted) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s sorted) Len() int {
-	return len(s)
-}
-
-func (s sorted) Less(i, j int) bool {
-	a := s[i]
-	b := s[j]
-
-	if a.Failed != b.Failed {
-		// put failed items at front
-		return a.Failed
-	}
-	if a.Enabled != b.Enabled {
-		// enabled in front of non-enabled items
-		return a.Enabled
-	}
-	// We don't worry about suspended items vs. running -- no clear order
-	// there.  We just sort based on name
-	return a.Name < b.Name
-}
-
-func sortInfos(items []*rest.ServiceInfo) {
-	sort.Sort(sorted(items))
+		util.Status(s), util.FormatDuration(d), s.Status)
 }
 
 func loadCertPath(roots *x509.CertPool, dirname string) error {
@@ -288,7 +236,7 @@ func main() {
 		}
 		fmt.Printf("Name:      %s\n", s.Name)
 		fmt.Printf("Desc:      %s\n", s.Description)
-		fmt.Printf("Status:    %s\n", status(s))
+		fmt.Printf("Status:    %s\n", util.Status(s))
 		fmt.Printf("Since:     %v\n", time.Now().Sub(s.TimeStamp))
 		fmt.Printf("Detail:    %s\n", s.Status)
 		fmt.Printf("Provides: ")
@@ -328,7 +276,7 @@ func main() {
 				fatal("Error", e)
 			}
 		}
-		sortInfos(infos)
+		util.SortServices(infos)
 		for _, info := range infos {
 			showStatus(info)
 		}

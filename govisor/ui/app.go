@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package ui
 
 import (
 	"errors"
@@ -23,8 +23,10 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/gdamore/govisor/rest"
 	"github.com/gdamore/topsl"
+
+	"github.com/gdamore/govisor/rest"
+	"github.com/gdamore/govisor/govisor/util"
 )
 
 type App struct {
@@ -201,7 +203,7 @@ func (a *App) getItems() ([]*rest.ServiceInfo, error) {
 			items = append(items, item)
 		}
 	}
-	sortInfos(items)
+	util.SortServices(items)
 	return items, nil
 }
 
