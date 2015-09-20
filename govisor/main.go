@@ -163,7 +163,12 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		args = []string{"ui"}
+		if e := doUI(client, addr, dlog); e != nil {
+			// status by default
+			args = []string{"status"}
+		} else {
+			return
+		}
 	}
 
 	switch args[0] {
@@ -286,6 +291,8 @@ func main() {
 			showStatus(info)
 		}
 	case "ui":
-		doUI(client, addr, dlog)
+		if e := doUI(client, addr, dlog); e != nil {
+			fatal("Error", e)
+		}
 	}
 }
