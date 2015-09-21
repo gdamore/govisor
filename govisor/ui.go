@@ -32,7 +32,6 @@ func doUI(client *rest.Client, url string, logger *log.Logger) error {
 		return e
 	}
 	app.Logf("Starting up user interface")
-	topsl.AppInit()
 	topsl.SetApplication(app)
 	app.ShowMain()
 	// periodic updates please
