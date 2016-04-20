@@ -31,8 +31,4 @@ so you can also wrap or embed the API with other web services.
 The govisor client application, "govisor", is in the govisor/ directory.
 It has a number of options, try it with -h to see them.
 
-To install the daemon, go get github.com/gdamore/govisor/govisord
-
-To install the client, go get github.com/gdamore/govisor/govisor
-
-Sorry, I don't know how to make "go get" traverse a file directory tree.
+To install the daemon and client: `go get -v github.com/gdamore/govisor/...`
