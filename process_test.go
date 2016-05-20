@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -21,6 +21,7 @@
 package govisor
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -79,5 +80,44 @@ func TestProcessFail(t *testing.T) {
 		So(s1.Enabled(), ShouldBeTrue)
 		So(s1.Failed(), ShouldBeTrue)
 		So(s1.Running(), ShouldBeFalse)
+	})
+}
+
+func TestProcessFromManifest(t *testing.T) {
+	Convey("Test process from a manifest", t, func() {
+		mydir, _ := os.Getwd()
+		exname := mydir + "/" + "process_test.sh"
+		manifest := ProcessManifest{
+			Name: "SampleProcessManifest",
+			Description: "A sample description",
+			Directory: "/usr",
+			Command: []string{ exname, "checkwd", "/usr"},
+			FailOnExit:	false,
+			Provides: []string{"testmanifest"},
+		}
+
+		m := NewManager("TestProcessFromManifest")
+		SetTestLogger(t, m)
+		s1 := NewProcessFromManifest(manifest);
+		So(s1, ShouldNotBeNil)
+
+		m.AddService(s1)
+		So(s1.Enabled(), ShouldBeFalse)
+		So(s1.Running(), ShouldBeFalse)
+		e := s1.Enable()
+		So(e, ShouldBeNil)
+		So(s1.Enabled(), ShouldBeTrue)
+
+		time.Sleep(time.Millisecond * 100)
+		So(s1.Failed(), ShouldBeFalse)
+
+		e = s1.Disable()
+		So(e, ShouldBeNil)
+		So(s1.Enabled(), ShouldBeFalse)
+		So(s1.Running(), ShouldBeFalse)
+
+		time.Sleep(time.Millisecond * 10)
+
+		m.Shutdown()
 	})
 }

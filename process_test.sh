@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# Copyright 2016 The Govisor Authors
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use file except in compliance with the License.
 # You may obtain a copy of the license at
@@ -31,6 +33,18 @@ case "$1" in
 	echo "Sleeping an hour (stdout)"
 	error "Sleep an hour (stderr)"
 	sleep 3600
+	;;
+
+checkwd)
+	pwd=`pwd`
+	exp="$2"
+	if [ "$pwd" != "$exp" ]
+	then
+		error "CWD of $pwd incorrect, expected $exp"
+		exit 1
+	fi
+	echo "CWD is $pwd"
+	exit 0
 	;;
 
 fail)
