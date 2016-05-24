@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -16,22 +16,22 @@ package ui
 
 import (
 	"errors"
-	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"golang.org/x/net/context"
 
-	"github.com/gdamore/topsl"
+	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/views"
 
 	"github.com/gdamore/govisor/govisor/util"
 	"github.com/gdamore/govisor/rest"
 )
 
 type App struct {
-	view      topsl.View
-	panel     topsl.Widget
+	app       *views.Application
+	view      views.View
+	panel     views.Widget
 	info      *InfoPanel
 	help      *HelpPanel
 	log       *LogPanel
@@ -46,14 +46,18 @@ type App struct {
 	logErr    error
 	logCtx    context.Context
 	logCancel context.CancelFunc
+
+	views.WidgetWatchers
 }
 
-func (a *App) show(w topsl.Widget) {
+func (a *App) show(w views.Widget) {
 	if w != a.panel {
 		a.panel.SetView(nil)
 		a.panel = w
 	}
 	a.panel.SetView(a.view)
+	a.panel.Resize()
+	a.app.Refresh()
 }
 
 func (a *App) ShowHelp() {
@@ -100,15 +104,9 @@ func (a *App) RestartService(name string) {
 	a.client.RestartService(name)
 }
 
-func (a *App) Die(s string) {
-	topsl.AppFini()
-	fmt.Printf("Failure: %s", s)
-	os.Exit(1)
-}
-
 func (a *App) Quit() {
-	topsl.AppFini()
-	os.Exit(0)
+	/* This just posts the quit event. */
+	a.app.Quit()
 }
 
 func (a *App) SetLogger(logger *log.Logger) {
@@ -124,21 +122,17 @@ func (a *App) Logf(fmt string, v ...interface{}) {
 	}
 }
 
-func (a *App) HandleEvent(ev topsl.Event) bool {
+func (a *App) HandleEvent(ev tcell.Event) bool {
 	switch ev := ev.(type) {
-	case *topsl.KeyEvent:
-		switch ev.Ch {
-		case 0:
-			// We intercept a few control keys up front, for global
-			// handling.
-			switch ev.Key {
-			case topsl.KeyCtrlC:
-				a.Quit()
-				return true
-			case topsl.KeyCtrlL:
-				topsl.AppRedraw()
-				return true
-			}
+	case *tcell.EventKey:
+		switch ev.Key() {
+		// Intercept a few control keys up front, for global handling.
+		case tcell.KeyCtrlC:
+			a.Quit()
+			return true
+		case tcell.KeyCtrlL:
+			a.app.Refresh()
+			return true
 		}
 	}
 
@@ -160,11 +154,18 @@ func (a *App) Resize() {
 	}
 }
 
-func (a *App) SetView(view topsl.View) {
+func (a *App) SetView(view views.View) {
 	a.view = view
 	if a.panel != nil {
 		a.panel.SetView(view)
 	}
+}
+
+func (a *App) Size() (int, int) {
+	if a.panel != nil {
+		return a.panel.Size()
+	}
+	return 0, 0
 }
 
 func (a *App) GetClient() *rest.Client {
@@ -172,12 +173,13 @@ func (a *App) GetClient() *rest.Client {
 }
 
 func (a *App) GetAppName() string {
-	return "Govisor v1.0"
+	return "Govisor v1.1"
 }
 
 func NewApp(client *rest.Client, url string) *App {
 
 	app := &App{}
+	app.app = &views.Application{}
 	app.client = client
 	app.info = NewInfoPanel(app)
 	app.help = NewHelpPanel(app)
@@ -213,11 +215,11 @@ func (a *App) refresh() {
 	for {
 		items, e := a.getItems()
 
-		topsl.AppLock()
-		a.items = items
-		a.err = e
-		topsl.AppUnlock()
-		topsl.AppDraw()
+		a.app.PostFunc(func() {
+			a.items = items
+			a.err = e
+			a.app.Update()
+		})
 		ctx, cancel := context.WithTimeout(context.Background(),
 			time.Hour)
 		etag, e = client.Watch(ctx, etag)
@@ -232,17 +234,13 @@ func (a *App) refreshLog(ctx context.Context, name string) {
 	info, e := a.client.GetLog(name)
 
 	for {
-		topsl.AppLock()
-		if a.logName == name {
-			a.logInfo = info
-			a.logErr = e
-
-			topsl.AppUnlock()
-			topsl.AppDraw()
-		} else {
-			topsl.AppUnlock()
-			return
-		}
+		a.app.PostFunc(func() {
+			if a.logName == name {
+				a.logInfo = info
+				a.logErr = e
+				a.app.Update()
+			}
+		})
 		select {
 		case <-ctx.Done():
 			return
@@ -252,7 +250,6 @@ func (a *App) refreshLog(ctx context.Context, name string) {
 	}
 }
 
-// Must be called with AppLock held
 func (a *App) GetItems() ([]*rest.ServiceInfo, error) {
 	return a.items, a.err
 }
@@ -274,4 +271,19 @@ func (a *App) GetLog(name string) (*rest.LogInfo, error) {
 		return a.logInfo, a.logErr
 	}
 	return nil, nil
+}
+
+func (a *App) Run() {
+	a.Logf("Starting up user interface")
+	a.app.SetRootWidget(a)
+	a.ShowMain()
+	go func() {
+		// Give us periodic updates
+		for {
+			a.app.Update()
+			time.Sleep(time.Second)
+		}
+	}()
+	a.Logf("Starting app loop")
+	a.app.Run()
 }

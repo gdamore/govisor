@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -17,112 +17,91 @@ package ui
 import (
 	"fmt"
 
-	"github.com/gdamore/topsl"
+	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/views"
 
 	"github.com/gdamore/govisor/govisor/util"
 	"github.com/gdamore/govisor/rest"
 )
 
 type InfoPanel struct {
-	text      *topsl.TextArea
-	info      *rest.ServiceInfo
-	name      string // service name
-	err       error  // last error retrieving state
-	statusbar *topsl.StatusBar
-	keybar    *topsl.KeyBar
-	titlebar  *topsl.TitleBar
-	panel     *topsl.Panel
-	app       *App
+	text *views.TextArea
+	info *rest.ServiceInfo
+	name string // service name
+	err  error  // last error retrieving state
+
+	Panel
 }
 
 func NewInfoPanel(app *App) *InfoPanel {
-	ipanel := &InfoPanel{
-		text:      topsl.NewTextArea(),
-		info:      nil,
-		titlebar:  topsl.NewTitleBar(),
-		keybar:    topsl.NewKeyBar(),
-		statusbar: topsl.NewStatusBar(),
-		panel:     topsl.NewPanel(),
-		app:       app,
-	}
+	ipanel := &InfoPanel{}
+	ipanel.Panel.Init(app)
 
-	ipanel.panel.SetBottom(ipanel.keybar)
-	ipanel.panel.SetTitle(ipanel.titlebar)
-	ipanel.panel.SetStatus(ipanel.statusbar)
-	ipanel.panel.SetContent(ipanel.text)
-
-	ipanel.titlebar.SetRight(app.GetAppName())
+	ipanel.text = views.NewTextArea()
+	ipanel.text.EnableCursor(false)
+	ipanel.SetContent(ipanel.text)
+	ipanel.text.SetStyle(tcell.StyleDefault.
+		Foreground(tcell.ColorSilver).Background(tcell.ColorBlack))
 
 	// We don't change the keybar, so set it once
-	ipanel.keybar.SetKeys([]string{"[Q] Quit", "[H] Help"})
-
-	// Cursor disabled
-	ipanel.text.EnableCursor(false)
+	ipanel.SetKeys([]string{"[Q] Quit", "[H] Help"})
 
 	return ipanel
 }
 
 func (i *InfoPanel) Draw() {
 	i.update()
-	i.panel.Draw()
+	i.Panel.Draw()
 }
 
-func (i *InfoPanel) HandleEvent(ev topsl.Event) bool {
+func (i *InfoPanel) HandleEvent(ev tcell.Event) bool {
 	info := i.info
 	switch ev := ev.(type) {
-	case *topsl.KeyEvent:
-		switch ev.Ch {
-		case 0:
-			switch ev.Key {
-			case topsl.KeyEsc:
-				i.app.ShowMain()
-				return true
-			case topsl.KeyF1:
-				i.app.ShowHelp()
-				return true
-			}
-		case 'Q', 'q':
-			i.app.ShowMain()
+	case *tcell.EventKey:
+		switch ev.Key() {
+		case tcell.KeyEsc:
+			i.App().ShowMain()
 			return true
-		case 'H', 'h':
-			i.app.ShowHelp()
+		case tcell.KeyF1:
+			i.App().ShowHelp()
 			return true
-		case 'L', 'l':
-			if info != nil {
-				i.app.ShowLog(info.Name)
+		case tcell.KeyRune:
+			switch ev.Rune() {
+			case 'Q', 'q':
+				i.App().ShowMain()
 				return true
-			}
-		case 'R', 'r':
-			if info != nil {
-				i.app.RestartService(info.Name)
+			case 'H', 'h':
+				i.App().ShowHelp()
 				return true
-			}
-		case 'E', 'e':
-			if info != nil && !info.Enabled {
-				i.app.EnableService(info.Name)
-				return true
-			}
-		case 'D', 'd':
-			if info != nil && info.Enabled {
-				i.app.DisableService(info.Name)
-				return true
-			}
-		case 'C', 'c':
-			if info != nil && info.Failed {
-				i.app.ClearService(info.Name)
-				return true
+			case 'L', 'l':
+				if info != nil {
+					i.App().ShowLog(info.Name)
+					return true
+				}
+			case 'R', 'r':
+				if info != nil {
+					i.App().RestartService(info.Name)
+					return true
+				}
+			case 'E', 'e':
+				if info != nil && !info.Enabled {
+					i.App().EnableService(info.Name)
+					return true
+				}
+			case 'D', 'd':
+				if info != nil && info.Enabled {
+					i.App().DisableService(info.Name)
+					return true
+				}
+			case 'C', 'c':
+				if info != nil && info.Failed {
+					i.App().ClearService(info.Name)
+					return true
+				}
 			}
 		}
 	}
-	return i.panel.HandleEvent(ev)
-}
-
-func (i *InfoPanel) SetView(view topsl.View) {
-	i.panel.SetView(view)
-}
-
-func (i *InfoPanel) Resize() {
-	i.panel.Resize()
+	return i.Panel.HandleEvent(ev)
 }
 
 func (i *InfoPanel) SetName(name string) {
@@ -132,7 +111,7 @@ func (i *InfoPanel) SetName(name string) {
 // update must be called with AppLock held.
 func (i *InfoPanel) update() {
 
-	s, e := i.app.GetItem(i.name)
+	s, e := i.App().GetItem(i.name)
 
 	if i.info == s && i.err == e {
 		return
@@ -141,31 +120,30 @@ func (i *InfoPanel) update() {
 	i.err = e
 	words := []string{"[ESC] Main", "[H] Help"}
 
-	i.titlebar.SetCenter("Details for " + i.name)
+	i.SetTitle("Details for " + i.name)
 
 	if s == nil {
 		if i.err != nil {
-			i.statusbar.SetStatus(fmt.Sprintf(
-				"No data: %v", i.err))
-			i.statusbar.SetFail()
+			i.SetStatus(fmt.Sprintf("No data: %v", i.err))
+			i.SetError()
 		} else {
-			i.statusbar.SetStatus("Loading...")
-			i.statusbar.SetNormal()
+			i.SetStatus("Loading...")
+			i.SetNormal()
 		}
 		i.text.SetLines(nil)
-		i.keybar.SetKeys(words)
+		i.SetKeys(words)
 		return
 	}
 
-	i.statusbar.SetStatus("")
+	i.SetStatus("")
 	if !s.Enabled {
-		i.statusbar.SetNormal()
+		i.SetNormal()
 	} else if s.Failed {
-		i.statusbar.SetFail()
+		i.SetError()
 	} else if s.Running {
-		i.statusbar.SetGood()
+		i.SetGood()
 	} else {
-		i.statusbar.SetWarn()
+		i.SetWarn()
 	}
 
 	lines := make([]string, 0, 8)
@@ -206,5 +184,5 @@ func (i *InfoPanel) update() {
 		}
 		words = append(words, "[R] Restart")
 	}
-	i.keybar.SetKeys(words)
+	i.SetKeys(words)
 }

@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -18,13 +18,25 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gdamore/topsl"
+	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/views"
 
 	"github.com/gdamore/govisor/govisor/util"
 	"github.com/gdamore/govisor/rest"
 )
 
 type sorted []*rest.ServiceInfo
+
+var (
+	StyleNormal = tcell.StyleDefault.
+			Foreground(tcell.ColorSilver).Background(tcell.ColorBlack)
+	StyleGood = tcell.StyleDefault.
+			Foreground(tcell.ColorGreen).Background(tcell.ColorBlack)
+	StyleWarn = tcell.StyleDefault.
+			Foreground(tcell.ColorYellow).Background(tcell.ColorBlack)
+	StyleError = tcell.StyleDefault.
+			Foreground(tcell.ColorMaroon).Background(tcell.ColorBlack)
+)
 
 func (s sorted) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
@@ -58,12 +70,7 @@ type MainPanel struct {
 	info      *rest.ServiceInfo
 	name      string // service name
 	err       error  // last error retrieving state
-	statusbar *topsl.StatusBar
-	keybar    *topsl.KeyBar
-	titlebar  *topsl.TitleBar
-	content   *topsl.CellView
-	panel     *topsl.Panel
-	app       *App
+	content   *views.CellView
 	selected  *rest.ServiceInfo
 	ndisabled int
 	nfailed   int
@@ -74,8 +81,10 @@ type MainPanel struct {
 	curx      int
 	cury      int
 	lines     []string
-	styles    []topsl.Style
+	styles    []tcell.Style
 	items     []*rest.ServiceInfo
+
+	Panel
 }
 
 // mainModel provides the model for a CellArea.
@@ -84,116 +93,97 @@ type mainModel struct {
 }
 
 func NewMainPanel(app *App, server string) *MainPanel {
-	m := &MainPanel{
-		content:   topsl.NewCellView(),
-		info:      nil,
-		titlebar:  topsl.NewTitleBar(),
-		keybar:    topsl.NewKeyBar(),
-		statusbar: topsl.NewStatusBar(),
-		panel:     topsl.NewPanel(),
-		app:       app,
-	}
+	m := &MainPanel{}
 
-	m.panel.SetBottom(m.keybar)
-	m.panel.SetTitle(m.titlebar)
-	m.panel.SetStatus(m.statusbar)
-	m.panel.SetContent(m.content)
+	m.Panel.Init(app)
+	m.content = views.NewCellView()
+	m.SetContent(m.content)
 
 	m.content.SetModel(&mainModel{m})
-	m.titlebar.SetRight(app.GetAppName())
-	m.titlebar.SetCenter(server)
+	m.content.SetStyle(StyleNormal)
 
-	// We don't change the keybar, so set it once
-	m.keybar.SetKeys([]string{"_Quit"})
+	m.SetTitle(server)
+	m.SetKeys([]string{"[Q] Quit"})
 
 	return m
 }
 
 func (m *MainPanel) Draw() {
 	m.update()
-	m.panel.Draw()
+	m.Panel.Draw()
 }
 
-func (m *MainPanel) HandleEvent(ev topsl.Event) bool {
+func (m *MainPanel) HandleEvent(ev tcell.Event) bool {
 	switch ev := ev.(type) {
-	case *topsl.KeyEvent:
-		switch ev.Ch {
-		case 0:
-			switch ev.Key {
-			case topsl.KeyEsc:
-				m.unselect()
+	case *tcell.EventKey:
+		switch ev.Key() {
+		case tcell.KeyEsc:
+			m.unselect()
+			return true
+		case tcell.KeyF1:
+			m.App().ShowHelp()
+			return true
+		case tcell.KeyEnter:
+			if m.selected != nil {
+				m.App().ShowInfo(m.selected.Name)
 				return true
-			case topsl.KeyF1:
-				m.app.ShowHelp()
+			}
+		case tcell.KeyRune:
+			switch ev.Rune() {
+			case 'Q', 'q':
+				m.App().Quit()
 				return true
-			case topsl.KeyEnter:
+			case 'H', 'h':
+				m.App().ShowHelp()
+				return true
+			case 'I', 'i':
 				if m.selected != nil {
-					m.app.ShowInfo(m.selected.Name)
+					m.App().ShowInfo(m.selected.Name)
+					return true
+				}
+			case 'L', 'l':
+				if m.selected != nil {
+					m.App().ShowLog(m.selected.Name)
+					return true
+				} else {
+					m.App().ShowLog("")
+					return true
+				}
+			case 'E', 'e':
+				if m.selected != nil && !m.selected.Enabled {
+					m.App().EnableService(m.selected.Name)
+					return true
+				}
+			case 'D', 'd':
+				if m.selected != nil && m.selected.Enabled {
+					m.App().DisableService(m.selected.Name)
+					return true
+				}
+			case 'C', 'c':
+				if m.selected != nil && m.selected.Failed {
+					m.App().ClearService(m.selected.Name)
+					return true
+				}
+			case 'R', 'r':
+				if m.selected != nil {
+					m.App().RestartService(m.selected.Name)
 					return true
 				}
 			}
-		case 'Q', 'q':
-			m.app.Quit()
-			return true
-		case 'H', 'h':
-			m.app.ShowHelp()
-			return true
-		case 'I', 'i':
-			if m.selected != nil {
-				m.app.ShowInfo(m.selected.Name)
-				return true
-			}
-		case 'L', 'l':
-			if m.selected != nil {
-				m.app.ShowLog(m.selected.Name)
-				return true
-			} else {
-				m.app.ShowLog("")
-				return true
-			}
-		case 'E', 'e':
-			if m.selected != nil && !m.selected.Enabled {
-				m.app.EnableService(m.selected.Name)
-				return true
-			}
-		case 'D', 'd':
-			if m.selected != nil && m.selected.Enabled {
-				m.app.DisableService(m.selected.Name)
-				return true
-			}
-		case 'C', 'c':
-			if m.selected != nil && m.selected.Failed {
-				m.app.ClearService(m.selected.Name)
-				return true
-			}
-		case 'R', 'r':
-			if m.selected != nil {
-				m.app.RestartService(m.selected.Name)
-				return true
-			}
 		}
 	}
-	return m.panel.HandleEvent(ev)
-}
-
-func (m *MainPanel) SetView(view topsl.View) {
-	m.panel.SetView(view)
-}
-
-func (m *MainPanel) Resize() {
-	m.panel.Resize()
+	return m.Panel.HandleEvent(ev)
 }
 
 // Model items
-
-func (model *mainModel) GetCell(x, y int) (rune, topsl.Style) {
+func (model *mainModel) GetCell(x, y int) (rune, tcell.Style, []rune, int) {
 	var ch rune
-	var style topsl.Style
+	var style tcell.Style
 
 	m := model.m
 
 	if y < 0 || y >= len(m.lines) {
-		return ch, style
+		return ch, StyleNormal, nil, 1
 	}
 
 	if x >= 0 && x < len(m.lines[y]) {
@@ -203,9 +193,9 @@ func (model *mainModel) GetCell(x, y int) (rune, topsl.Style) {
 	}
 	style = m.styles[y]
 	if m.items[y] == m.selected {
-		style = style.Reverse()
+		style = style.Reverse(true)
 	}
-	return ch, style
+	return ch, style, nil, 1
 }
 
 func (model *mainModel) GetBounds() (int, int) {
@@ -275,7 +265,7 @@ func (m *MainPanel) updateCursor(selected bool) {
 // as part of another update.  It is called with the AppLock held.
 func (m *MainPanel) update() {
 
-	items, err := m.app.GetItems()
+	items, err := m.App().GetItems()
 	m.items = items
 
 	// preserve selected item
@@ -291,15 +281,15 @@ func (m *MainPanel) update() {
 		}
 	}
 	if err != nil {
-		m.statusbar.SetFail()
-		m.statusbar.SetStatus(fmt.Sprintf("Cannot load items: %v", err))
+		m.SetError()
+		m.SetStatus(fmt.Sprintf("Cannot load items: %v", err))
 		m.lines = []string{}
-		m.styles = []topsl.Style{}
+		m.styles = []tcell.Style{}
 		return
 	}
 
 	lines := make([]string, 0, len(m.items))
-	styles := make([]topsl.Style, 0, len(m.items))
+	styles := make([]tcell.Style, 0, len(m.items))
 
 	m.ndisabled = 0
 	m.nfailed = 0
@@ -322,18 +312,18 @@ func (m *MainPanel) update() {
 		m.height++
 
 		lines = append(lines, line)
-		var style topsl.Style
+		var style tcell.Style
 		if !info.Enabled {
-			style = topsl.StyleText
+			style = StyleNormal
 			m.ndisabled++
 		} else if info.Failed {
-			style = topsl.StyleError
+			style = StyleError
 			m.nfailed++
 		} else if !info.Running {
-			style = topsl.StyleWarn
+			style = StyleWarn
 			m.nstopped++
 		} else {
-			style = topsl.StyleGood
+			style = StyleGood
 			m.nrunning++
 		}
 		styles = append(styles, style)
@@ -342,19 +332,19 @@ func (m *MainPanel) update() {
 	m.lines = lines
 	m.styles = styles
 
-	m.statusbar.SetStatus(fmt.Sprintf(
+	m.SetStatus(fmt.Sprintf(
 		"%6d Services %6d Faulted %6d Running %6d Standby %6d Disabled",
 		len(m.items),
 		m.nfailed, m.nrunning, m.nstopped, m.ndisabled))
 
 	if m.nfailed > 0 {
-		m.statusbar.SetFail()
+		m.SetError()
 	} else if m.nstopped > 0 {
-		m.statusbar.SetWarn()
+		m.SetWarn()
 	} else if m.nrunning > 0 {
-		m.statusbar.SetGood()
+		m.SetGood()
 	} else {
-		m.statusbar.SetNormal()
+		m.SetNormal()
 	}
 
 	words := []string{"[Q] Quit", "[H] Help"}
@@ -374,5 +364,5 @@ func (m *MainPanel) update() {
 	} else {
 		words = append(words, "[L] Log")
 	}
-	m.keybar.SetKeys(words)
+	m.SetKeys(words)
 }

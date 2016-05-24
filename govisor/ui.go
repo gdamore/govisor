@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -16,9 +16,6 @@ package main
 
 import (
 	"log"
-	"time"
-
-	"github.com/gdamore/topsl"
 
 	"github.com/gdamore/govisor/govisor/ui"
 	"github.com/gdamore/govisor/rest"
@@ -28,20 +25,7 @@ func doUI(client *rest.Client, url string, logger *log.Logger) error {
 	app := ui.NewApp(client, url)
 	app.SetLogger(logger)
 
-	if e := topsl.AppInit(); e != nil {
-		return e
-	}
-	app.Logf("Starting up user interface")
-	topsl.SetApplication(app)
-	app.ShowMain()
-	// periodic updates please
-	go func() {
-		for {
-			topsl.AppDraw()
-			time.Sleep(time.Second)
-		}
-	}()
-	topsl.RunApplication()
+	app.Run()
 	return nil
 }
 
