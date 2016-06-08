@@ -88,17 +88,17 @@ func TestProcessFromManifest(t *testing.T) {
 		mydir, _ := os.Getwd()
 		exname := mydir + "/" + "process_test.sh"
 		manifest := ProcessManifest{
-			Name: "SampleProcessManifest",
+			Name:        "SampleProcessManifest",
 			Description: "A sample description",
-			Directory: "/usr",
-			Command: []string{ exname, "checkwd", "/usr"},
-			FailOnExit:	false,
-			Provides: []string{"testmanifest"},
+			Directory:   "/usr",
+			Command:     []string{exname, "checkwd", "/usr"},
+			FailOnExit:  false,
+			Provides:    []string{"testmanifest"},
 		}
 
 		m := NewManager("TestProcessFromManifest")
 		SetTestLogger(t, m)
-		s1 := NewProcessFromManifest(manifest);
+		s1 := NewProcessFromManifest(manifest)
 		So(s1, ShouldNotBeNil)
 
 		m.AddService(s1)

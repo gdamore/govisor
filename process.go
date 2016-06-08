@@ -34,7 +34,7 @@ const (
 	PropProcessStopCmd                 = "_ProcStopCmd"
 	PropProcessStopTime                = "_ProcStopTime"
 	PropProcessCheckCmd                = "_ProcCheckCmd"
-	PropProcessDirectory		   = "_ProcDirectory"
+	PropProcessDirectory               = "_ProcDirectory"
 )
 
 //
@@ -342,7 +342,7 @@ type ProcessManifest struct {
 	Provides    []string      `json:"provides"`
 	Depends     []string      `json:"depends"`
 	Conflicts   []string      `json:"conflicts"`
-	Directory   string	  `json:"directory"`
+	Directory   string        `json:"directory"`
 }
 
 func NewProcessFromManifest(m ProcessManifest) *Service {

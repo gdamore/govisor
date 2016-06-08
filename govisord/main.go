@@ -225,9 +225,7 @@ func main() {
 					fname, e)
 				mf.Close()
 			} else if e := m.AddService(p); e != nil {
-				log.Printf("Failed to add service %s: %v",
-					fname, e)
-				m.AddService(p)
+				/* Failure logged by m already */
 				mf.Close()
 			}
 		}
