@@ -157,13 +157,20 @@ func (m *Manager) GetInfo() *ManagerInfo {
 }
 
 // AddService adds a service, registering it, to the manager.
-func (m *Manager) AddService(s *Service) {
+func (m *Manager) AddService(s *Service) error {
 	m.lock()
+	for s2 := range m.services {
+		if s.name == s2.name {
+			m.unlock()
+			return ErrNameExists
+		}
+	}
 	s.setManager(m)
 	m.listSerial = m.bumpSerial()
 	s.serial = m.bumpSerial()
 	m.listStamp = time.Now()
 	m.unlock()
+	return nil
 }
 
 // DeleteService deletes a service from the manager.
