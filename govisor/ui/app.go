@@ -34,6 +34,7 @@ type App struct {
 	panel     views.Widget
 	info      *InfoPanel
 	help      *HelpPanel
+	auth      *AuthPanel
 	log       *LogPanel
 	main      *MainPanel
 	client    *rest.Client
@@ -46,18 +47,22 @@ type App struct {
 	logErr    error
 	logCtx    context.Context
 	logCancel context.CancelFunc
+	wake      chan struct{}
 
 	views.WidgetWatchers
 }
 
 func (a *App) show(w views.Widget) {
-	if w != a.panel {
-		a.panel.SetView(nil)
-		a.panel = w
-	}
-	a.panel.SetView(a.view)
-	a.panel.Resize()
-	a.app.Refresh()
+	a.app.PostFunc(func() {
+		if w != a.panel {
+			a.panel.SetView(nil)
+			a.panel = w
+		}
+
+		a.panel.SetView(a.view)
+		a.Resize()
+		a.app.Refresh()
+	})
 }
 
 func (a *App) ShowHelp() {
@@ -86,6 +91,22 @@ func (a *App) ShowLog(name string) {
 
 func (a *App) ShowMain() {
 	a.show(a.main)
+}
+
+func (a *App) ShowAuth() {
+	a.auth.ResetFields()
+	a.show(a.auth)
+}
+
+func (a *App) SetUserPassword(user, pass string) {
+	a.client.SetAuth(user, pass)
+	a.items = nil
+	a.err = nil
+	var s struct{}
+	select {
+	case a.wake <- s:
+	default:
+	}
 }
 
 func (a *App) DisableService(name string) {
@@ -173,7 +194,7 @@ func (a *App) GetClient() *rest.Client {
 }
 
 func (a *App) GetAppName() string {
-	return "Govisor v1.1"
+	return "Govisor v1.2"
 }
 
 func NewApp(client *rest.Client, url string) *App {
@@ -183,9 +204,15 @@ func NewApp(client *rest.Client, url string) *App {
 	app.client = client
 	app.info = NewInfoPanel(app)
 	app.help = NewHelpPanel(app)
+	app.auth = NewAuthPanel(app, url)
 	app.log = NewLogPanel(app)
 	app.main = NewMainPanel(app, url)
 	app.panel = app.main
+	app.wake = make(chan struct{})
+
+	app.app.SetStyle(tcell.StyleDefault.
+		Foreground(tcell.ColorSilver).
+		Background(tcell.ColorBlack))
 
 	go app.refresh()
 	return app
@@ -225,7 +252,10 @@ func (a *App) refresh() {
 		etag, e = client.Watch(ctx, etag)
 		cancel()
 		if e != nil {
-			time.Sleep(2 * time.Second)
+			select {
+			case <-a.wake:
+			case <-time.After(2 * time.Second):
+			}
 		}
 	}
 }

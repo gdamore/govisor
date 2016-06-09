@@ -29,13 +29,17 @@ type sorted []*rest.ServiceInfo
 
 var (
 	StyleNormal = tcell.StyleDefault.
-			Foreground(tcell.ColorSilver).Background(tcell.ColorBlack)
+			Foreground(tcell.ColorSilver).
+			Background(tcell.ColorBlack)
 	StyleGood = tcell.StyleDefault.
-			Foreground(tcell.ColorGreen).Background(tcell.ColorBlack)
+			Foreground(tcell.ColorGreen).
+			Background(tcell.ColorBlack)
 	StyleWarn = tcell.StyleDefault.
-			Foreground(tcell.ColorYellow).Background(tcell.ColorBlack)
+			Foreground(tcell.ColorYellow).
+			Background(tcell.ColorBlack)
 	StyleError = tcell.StyleDefault.
-			Foreground(tcell.ColorMaroon).Background(tcell.ColorBlack)
+			Foreground(tcell.ColorMaroon).
+			Background(tcell.ColorBlack)
 )
 
 func (s sorted) Swap(i, j int) {
@@ -281,6 +285,13 @@ func (m *MainPanel) update() {
 		}
 	}
 	if err != nil {
+		switch e := err.(type) {
+		case *rest.Error:
+			if e.Code == 401 {
+				m.App().ShowAuth()
+				return
+			}
+		}
 		m.SetError()
 		m.SetStatus(fmt.Sprintf("Cannot load items: %v", err))
 		m.lines = []string{}
