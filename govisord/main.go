@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -220,15 +220,12 @@ func main() {
 			if mf, e := os.Open(fname); e != nil {
 				log.Printf("Failed to open manifest %s: %v",
 					fname, e)
-				mf.Close()
-				continue
 			} else if p, e := govisor.NewProcessFromJson(mf); e != nil {
 				log.Printf("Failed to load manifest %s: %v",
 					fname, e)
 				mf.Close()
-				continue
-			} else {
-				m.AddService(p)
+			} else if e := m.AddService(p); e != nil {
+				/* Failure logged by m already */
 				mf.Close()
 			}
 		}

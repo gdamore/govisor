@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -28,4 +28,5 @@ var (
 	ErrBadPropValue = errors.New("Bad property value")
 	ErrPropReadOnly = errors.New("Property not changeable")
 	ErrRateLimited  = errors.New("Restarting too quickly")
+	ErrNameExists   = errors.New("Service name already exists")
 )

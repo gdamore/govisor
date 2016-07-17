@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -28,6 +28,7 @@ type Manager struct {
 	name       string
 	baseDir    string
 	logger     *log.Logger
+	mylog      *log.Logger
 	log        *Log
 	mlog       *MultiLogger
 	writer     io.Writer
@@ -157,13 +158,24 @@ func (m *Manager) GetInfo() *ManagerInfo {
 }
 
 // AddService adds a service, registering it, to the manager.
-func (m *Manager) AddService(s *Service) {
+func (m *Manager) AddService(s *Service) error {
 	m.lock()
+	for s2 := range m.services {
+		if s.Name() == s2.Name() {
+			m.unlock()
+			m.logf("[%s] Failed to add service [%s]: %v",
+				m.Name(), s.Name(), ErrNameExists)
+			return ErrNameExists
+		}
+	}
 	s.setManager(m)
 	m.listSerial = m.bumpSerial()
 	s.serial = m.bumpSerial()
 	m.listStamp = time.Now()
+	m.logf("[%s] Added service [%s]: %s", m.Name(), s.Name(),
+		s.Description())
 	m.unlock()
+	return nil
 }
 
 // DeleteService deletes a service from the manager.
@@ -174,6 +186,7 @@ func (m *Manager) DeleteService(s *Service) error {
 		return ErrIsEnabled
 	}
 	s.delManager()
+	m.logf("[%s] Deleted service [%s]", m.Name(), s.Name())
 	m.listSerial = m.bumpSerial()
 	s.serial = m.bumpSerial()
 	m.listStamp = time.Now()
@@ -296,8 +309,8 @@ func (m *Manager) notify(s *Service) {
 }
 
 func (m *Manager) logf(format string, v ...interface{}) {
-	if m.logger != nil {
-		m.logger.Printf(format, v...)
+	if m.mylog != nil {
+		m.mylog.Printf(format, v...)
 	} else {
 		log.Printf(format, v...)
 	}
@@ -360,6 +373,7 @@ func NewManager(name string) *Manager {
 	m.log = NewLog()
 	m.mlog.AddLogger(log.New(m.log, "", 0))
 	m.logger = log.New(os.Stderr, "", 0)
+	m.mylog = m.getLogger(nil)
 	m.setBaseDir()
 	go m.monitor()
 	return m

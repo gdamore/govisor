@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -15,61 +15,45 @@
 package ui
 
 import (
-	"github.com/gdamore/topsl"
+	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/views"
 )
 
 type HelpPanel struct {
-	app       *App
-	text      *topsl.TextArea
-	titlebar  *topsl.TitleBar
-	statusbar *topsl.StatusBar
-	keybar    *topsl.KeyBar
-	panel     *topsl.Panel
+	text *views.TextArea
+	Panel
 }
 
-func (h *HelpPanel) Draw() {
-	h.panel.Draw()
-}
-
-func (h *HelpPanel) HandleEvent(ev topsl.Event) bool {
+func (h *HelpPanel) HandleEvent(ev tcell.Event) bool {
 	switch ev := ev.(type) {
-	case *topsl.KeyEvent:
-		switch ev.Ch {
-		case 0:
-			switch ev.Key {
-			case topsl.KeyEsc:
+	case *tcell.EventKey:
+		switch ev.Key() {
+		case tcell.KeyEsc:
+			h.App().ShowMain()
+			return true
+		case tcell.KeyRune:
+			switch ev.Rune() {
+			case 'Q', 'q':
 				h.app.ShowMain()
 				return true
 			}
-		case 'Q', 'q':
-			h.app.ShowMain()
-			return true
 		}
 	}
-	return h.panel.HandleEvent(ev)
+	return h.Panel.HandleEvent(ev)
 }
 
-func (h *HelpPanel) SetView(view topsl.View) {
-	h.panel.SetView(view)
+func (h *HelpPanel) Draw() {
+	h.SetKeys([]string{"[ESC] Main"})
+	h.SetTitle("Help")
+	h.Panel.Draw()
 }
 
-func (h *HelpPanel) Resize() {
-	h.panel.Resize()
-}
+func (h *HelpPanel) Init(app *App) {
 
-func NewHelpPanel(app *App) *HelpPanel {
-	h := &HelpPanel{
-		titlebar:  topsl.NewTitleBar(),
-		statusbar: topsl.NewStatusBar(),
-		keybar:    topsl.NewKeyBar(),
-		text:      topsl.NewTextArea(),
-		panel:     topsl.NewPanel(),
-		app:       app,
-	}
+	h.Panel.Init(app)
 
-	h.titlebar.SetRight(app.GetAppName())
-	h.titlebar.SetCenter("Help")
-
+	// No, we don't have context-sensitive help.
+	h.text = views.NewTextArea()
 	h.text.SetLines([]string{
 		"Supported keys (not all keys available in all contexts)",
 		"",
@@ -77,7 +61,9 @@ func NewHelpPanel(app *App) *HelpPanel {
 		"  <CTRL-C>       : quit",
 		"  <CTRL-L>       : refresh the screeen",
 		"  <H>            : show this help",
-		"  <UP>, <DOWN>   : navigation",
+		"  <UP>,   <DOWN> : navigation",
+		"  <PGUP>, <PGDN>",
+		"  <HOME>, <END>",
 		"  <E>            : enable selected service",
 		"  <D>            : disable selected service",
 		"  <I>            : view detailed information for service",
@@ -86,14 +72,15 @@ func NewHelpPanel(app *App) *HelpPanel {
 		"  <L>            : view log for selected service",
 		"",
 		"This program is distributed under the Apache 2.0 License",
-		"Copyright 2015 The Govisor Authors",
+		"Copyright 2016 The Govisor Authors",
 	})
+	h.SetContent(h.text)
+}
 
-	h.keybar.SetKeys([]string{"[ESC] Main"})
-	h.panel.SetTitle(h.titlebar)
-	h.panel.SetStatus(h.statusbar)
-	h.panel.SetBottom(h.keybar)
-	h.panel.SetContent(h.text)
+func NewHelpPanel(app *App) *HelpPanel {
 
+	h := &HelpPanel{}
+
+	h.Init(app)
 	return h
 }

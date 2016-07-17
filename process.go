@@ -1,4 +1,4 @@
-// Copyright 2015 The Govisor Authors
+// Copyright 2016 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -34,11 +34,12 @@ const (
 	PropProcessStopCmd                 = "_ProcStopCmd"
 	PropProcessStopTime                = "_ProcStopTime"
 	PropProcessCheckCmd                = "_ProcCheckCmd"
+	PropProcessDirectory               = "_ProcDirectory"
 )
 
 //
 // Process represents an actual operating system level process.  This implements
-// the Provider interface, and hence Process objects can used as such.
+// the Provider interface, and hence Process objects can be used as such.
 //
 // XXX: is there any reason for this to be public?
 // XXX: Should we support Setsid and other SysProcAttr settings?
@@ -60,6 +61,7 @@ type Process struct {
 	checkCmd   *exec.Cmd
 	startCmd   *exec.Cmd
 	process    *os.Process
+	directory  string
 
 	lock   sync.Mutex
 	waiter sync.WaitGroup
@@ -301,6 +303,12 @@ func (p *Process) SetProperty(n PropertyName, v interface{}) error {
 			return nil
 		}
 		return ErrBadPropType
+	case PropProcessDirectory:
+		if v, ok := v.(string); ok {
+			p.directory = v
+			return nil
+		}
+		return ErrBadPropType
 	}
 	return ErrBadPropName
 }
@@ -315,6 +323,8 @@ func (p *Process) Property(n PropertyName) (interface{}, error) {
 		return p.stopTime, nil
 	case PropProcessStopCmd:
 		return p.stopCmd, nil
+	case PropProcessDirectory:
+		return p.directory, nil
 	}
 	return nil, ErrBadPropName
 }
@@ -332,20 +342,25 @@ type ProcessManifest struct {
 	Provides    []string      `json:"provides"`
 	Depends     []string      `json:"depends"`
 	Conflicts   []string      `json:"conflicts"`
+	Directory   string        `json:"directory"`
 }
 
 func NewProcessFromManifest(m ProcessManifest) *Service {
 	p := &Process{}
 	p.name = m.Name
 	p.desc = m.Description
+	p.directory = m.Directory
 	if len(m.Command) != 0 {
 		p.startCmd = exec.Command(m.Command[0], m.Command[1:]...)
+		p.startCmd.Dir = p.directory
 	}
 	if len(m.StopCmd) != 0 {
 		p.stopCmd = exec.Command(m.StopCmd[0], m.StopCmd[1:]...)
+		p.stopCmd.Dir = p.directory
 	}
 	if len(m.CheckCmd) != 0 {
 		p.checkCmd = exec.Command(m.CheckCmd[0], m.CheckCmd[1:]...)
+		p.checkCmd.Dir = p.directory
 	}
 	p.stopTime = m.StopTime
 	p.depends = m.Depends
@@ -375,5 +390,6 @@ func NewProcess(name string, cmd *exec.Cmd) *Service {
 	*p.startCmd = *cmd
 	p.name = name
 	p.desc = name + " process: " + cmd.Path
+	p.directory = cmd.Dir
 	return NewService(p)
 }
