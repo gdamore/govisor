@@ -194,7 +194,7 @@ func (a *App) GetClient() *rest.Client {
 }
 
 func (a *App) GetAppName() string {
-	return "Govisor v1.2"
+	return "Govisor v1.3"
 }
 
 func NewApp(client *rest.Client, url string) *App {
