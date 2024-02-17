@@ -1,13 +1,13 @@
 ## govisor
 
-[![Linux Status](https://img.shields.io/travis/gdamore/govisor.svg?label=linux)](https://travis-ci.org/gdamore/govisor)
-[![Windows Status](https://img.shields.io/appveyor/ci/gdamore/govisor.svg?label=windows)](https://ci.appveyor.com/project/gdamore/govisor)
+[![Linux](https://img.shields.io/github/actions/workflow/status/gdamore/govisor/linux.yml?branch=main&logoColor=grey&logo=linux&label=)](https://github.com/gdamore/govisor/actions/workflows/linux.yml)
+[![Windows](https://img.shields.io/github/actions/workflow/status/gdamore/govisor/windows.yml?branch=main&logoColor=grey&logo=windows&label=)](https://github.com/gdamore/govisor/actions/workflows/windows.yml)
 [![GitHub License](https://img.shields.io/github/license/gdamore/govisor.svg)](https://github.com/gdamore/govisor/blob/master/LICENSE)
 [![Issues](https://img.shields.io/github/issues/gdamore/govisor.svg)](https://github.com/gdamore/govisor/issues)
 [![Gitter](https://img.shields.io/badge/gitter-join-brightgreen.svg)](https://gitter.im/gdamore/govisor)
 [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/gdamore/govisor)
 
-package govisor is a framework for managing services.  It supports dependency
+Govisor is a framework for managing services.  It supports dependency
 graphs of services, and handles starting, stopping, and restarting services
 as necessary.  It also deals with failures, and supports self-healing, and
 has some advanced logging capabilities.  It also offers a REST API for
