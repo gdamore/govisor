@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// NOTE: THIS DESCRIBES INTENT, AND DOES NOT REFLECT ACTUAL IMPLEMENTATION
-// (YET!!)
-//
 // Package govisor provides a pure Go process management framework.
 // This is similar in concept to supervisord, but the implementation
 // and the interfaces are wholly different.  Some inspiration is taken
