@@ -4,7 +4,6 @@
 [![Windows](https://img.shields.io/github/actions/workflow/status/gdamore/govisor/windows.yml?branch=main&logoColor=grey&logo=windows&label=)](https://github.com/gdamore/govisor/actions/workflows/windows.yml)
 [![GitHub License](https://img.shields.io/github/license/gdamore/govisor.svg)](https://github.com/gdamore/govisor/blob/master/LICENSE)
 [![Issues](https://img.shields.io/github/issues/gdamore/govisor.svg)](https://github.com/gdamore/govisor/issues)
-[![Gitter](https://img.shields.io/badge/gitter-join-brightgreen.svg)](https://gitter.im/gdamore/govisor)
 [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](https://godoc.org/github.com/gdamore/govisor)
 
 Govisor is a framework for managing services.  It supports dependency
