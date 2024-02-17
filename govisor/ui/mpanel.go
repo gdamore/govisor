@@ -1,4 +1,4 @@
-// Copyright 2016 The Govisor Authors
+// Copyright 2024 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gdamore/tcell"
-	"github.com/gdamore/tcell/views"
+	"github.com/gdamore/tcell/v2"
+	"github.com/gdamore/tcell/v2/views"
 
 	"github.com/gdamore/govisor/govisor/util"
 	"github.com/gdamore/govisor/rest"
@@ -67,7 +67,7 @@ func (s sorted) Less(i, j int) bool {
 	return a.Name < b.Name
 }
 
-// MainPanel implements a topsl.Widget as a topsl.Panel, but provides the data
+// MainPanel implements a Widget as a Panel, but provides the data
 // model and handling for the content area, using data loaded from a Govisor
 // REST API service.
 type MainPanel struct {

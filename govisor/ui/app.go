@@ -1,4 +1,4 @@
-// Copyright 2016 The Govisor Authors
+// Copyright 2024 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -21,8 +21,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/gdamore/tcell"
-	"github.com/gdamore/tcell/views"
+	"github.com/gdamore/tcell/v2"
+	"github.com/gdamore/tcell/v2/views"
 
 	"github.com/gdamore/govisor/govisor/util"
 	"github.com/gdamore/govisor/rest"
@@ -277,6 +277,14 @@ func (a *App) refreshLog(ctx context.Context, name string) {
 		default:
 		}
 		info, e = a.client.WatchLog(ctx, name, info)
+		if (e != nil) {
+			select {
+			case <- ctx.Done():
+				return
+			case <- a.wake:
+			case <- time.After(2 * time.Second):
+			}
+		}
 	}
 }
 

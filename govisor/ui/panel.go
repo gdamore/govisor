@@ -1,4 +1,4 @@
-// Copyright 2016 The Govisor Authors
+// Copyright 2024 The Govisor Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use file except in compliance with the License.
@@ -17,7 +17,7 @@ package ui
 import (
 	"sync"
 
-	"github.com/gdamore/tcell/views"
+	"github.com/gdamore/tcell/v2/views"
 )
 
 // Panel is just a wrapper around the views.Panel, but it changes
