@@ -32,3 +32,10 @@ The govisor client application, "govisor", is in the govisor/ directory.
 It has a number of options, try it with -h to see them.
 
 To install the daemon and client: `go get -v github.com/gdamore/govisor/...`
+
+### Commercial Support
+
+Govisor is absolutely free, but support is available if needed:
+
+- [TideLift](https://tidelift.com/) subscriptions include support for _govisor_, as well as many other open source packages.
+- [Staysail Systems Inc.](mailto:info@staysail.tech) offers direct support, and custom development around _govisor_ on an hourly basis.
